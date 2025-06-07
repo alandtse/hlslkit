@@ -1,0 +1,110 @@
+[tool.poetry]
+name = "hlslkit"
+version = "0.0.1"
+description = "Tools for automating HLSL shader compilation, diagnostics, and define management."
+authors = ["Alan Tse <alandtse@gmail.com>"]
+repository = "https://github.com/alandtse/hlslkit"
+documentation = "https://alandtse.github.io/hlslkit/"
+readme = "README.md"
+packages = [
+  {include = "hlslkit"}
+]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+pyyaml = "^6.0.2"
+tqdm = "^4.67.1"
+py-markdown-table = "^1.3.0"
+psutil = "^7.0.0"
+gooey = "^1.0.8.1"
+pcpp = "^1.30"
+numpy = "^2.2.6"
+jellyfish = "^1.2.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.2.0"
+pytest-cov = "^4.0.0"
+deptry = "^0.16.2"
+pyright = "^1.1.382"
+pre-commit = "^3.4.0"
+tox = "^4.11.1"
+pytest-mock = "^3.14.0"
+
+[tool.poetry.group.docs.dependencies]
+mkdocs = "^1.4.2"
+mkdocs-material = "^9.2.7"
+mkdocstrings = {extras = ["python"], version = "^0.26.1"}
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pyright]
+include = ["hlslkit"]
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+fix = true
+
+[tool.ruff.lint]
+select = [
+    # flake8-2020
+    "YTT",
+    # flake8-bandit
+    "S",
+    # flake8-bugbear
+    "B",
+    # flake8-builtins
+    "A",
+    # flake8-comprehensions
+    "C4",
+    # flake8-debugger
+    "T10",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+    # mccabe
+    "C90",
+    # pycodestyle
+    "E", "W",
+    # pyflakes
+    "F",
+    # pygrep-hooks
+    "PGH",
+    # pyupgrade
+    "UP",
+    # ruff
+    "RUF",
+    # tryceratops
+    "TRY",
+]
+ignore = [
+    # LineTooLong
+    "E501",
+    # DoNotAssignLambda
+    "E731",
+    # Ignore McCabe complexity
+    "C901",
+]
+
+[tool.ruff.format]
+preview = true
+
+[tool.coverage.report]
+skip_empty = true
+
+[tool.coverage.run]
+branch = true
+source = ["hlslkit"]
+
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]

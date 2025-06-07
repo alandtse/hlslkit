@@ -1,0 +1,54 @@
+site_name: hlslkit
+repo_url: https://github.com/alandtse/hlslkit
+site_url: https://alandtse.github.io/hlslkit
+site_description: Tools for automating HLSL shader compilation, diagnostics, and define management.
+site_author: Alan Tse
+edit_uri: edit/main/docs/
+repo_name: alandtse/hlslkit
+copyright: Maintained by <a href="https://alandtse.com">Florian</a>.
+
+nav:
+    - Home: index.md
+    - Modules: modules.md
+plugins:
+    - search
+    - mkdocstrings:
+          handlers:
+              python:
+                  setup_commands:
+                      - import sys
+                      - sys.path.append('../')
+theme:
+    name: material
+    feature:
+        tabs: true
+    palette:
+        - media: "(prefers-color-scheme: light)"
+          scheme: default
+          primary: white
+          accent: deep orange
+          toggle:
+              icon: material/brightness-7
+              name: Switch to dark mode
+        - media: "(prefers-color-scheme: dark)"
+          scheme: slate
+          primary: black
+          accent: deep orange
+          toggle:
+              icon: material/brightness-4
+              name: Switch to light mode
+    icon:
+        repo: fontawesome/brands/github
+
+extra:
+    social:
+        - icon: fontawesome/brands/github
+          link: https://github.com/alandtse/hlslkit
+        - icon: fontawesome/brands/python
+          link: https://pypi.org/project/hlslkit
+
+markdown_extensions:
+    - toc:
+          permalink: true
+    - pymdownx.arithmatex:
+          generic: true
