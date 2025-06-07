@@ -1,3 +1,4 @@
+import shutil
 from subprocess import TimeoutExpired  # Added for TimeoutExpired
 from unittest.mock import MagicMock, patch
 
@@ -5,6 +6,9 @@ import pytest
 import yaml  # Added for YAMLError
 
 from hlslkit.compile_shaders import compile_shader, flatten_defines, normalize_path, parse_shader_configs
+
+# Check if fxc.exe is available in the environment
+HAS_FXC = shutil.which("fxc.exe") is not None
 
 
 def test_normalize_path_with_shaders():
@@ -63,12 +67,14 @@ def test_flatten_defines_invalid():
     assert result == ["A=1", None, "B"]  # Matches actual behavior
 
 
+@patch("hlslkit.compile_shaders.validate_shader_inputs")
 @patch("hlslkit.compile_shaders.subprocess.Popen")
 @patch("hlslkit.compile_shaders.os.makedirs")
 @patch("hlslkit.compile_shaders.os.path.exists")
-def test_compile_shader_success(mock_exists, mock_makedirs, mock_popen):
+def test_compile_shader_success(mock_exists, mock_makedirs, mock_popen, mock_validate):
     """Test compile_shader with successful compilation."""
     mock_exists.return_value = True
+    mock_validate.return_value = None  # No validation error
     mock_process = MagicMock()
     mock_process.communicate.return_value = ("Compiled", "")
     mock_process.returncode = 0
@@ -90,14 +96,16 @@ def test_compile_shader_success(mock_exists, mock_makedirs, mock_popen):
     assert "Compiled" in result["log"] or "Invalid shader file" in result["log"]
 
 
+@patch("hlslkit.compile_shaders.validate_shader_inputs")
 @patch("hlslkit.compile_shaders.os.path.isfile")
 @patch("hlslkit.compile_shaders.subprocess.Popen")
 @patch("hlslkit.compile_shaders.os.makedirs")
 @patch("hlslkit.compile_shaders.os.path.exists")
-def test_compile_shader_missing_file(mock_exists, mock_makedirs, mock_popen, mock_isfile):
+def test_compile_shader_missing_file(mock_exists, mock_makedirs, mock_popen, mock_isfile, mock_validate):
     """Test compile_shader with missing shader file."""
     # FXC exists, but shader file does not
     mock_exists.return_value = True
+    mock_validate.return_value = "Invalid shader file: nonexistent.hlsl"  # Mock validation error for missing file
     mock_isfile.return_value = False
     result = compile_shader(
         fxc_path="fxc.exe",
@@ -116,12 +124,14 @@ def test_compile_shader_missing_file(mock_exists, mock_makedirs, mock_popen, moc
     assert "Invalid shader file" in result["log"]
 
 
+@patch("hlslkit.compile_shaders.validate_shader_inputs")
 @patch("hlslkit.compile_shaders.subprocess.Popen")
 @patch("hlslkit.compile_shaders.os.makedirs")
 @patch("hlslkit.compile_shaders.os.path.exists")
-def test_compile_shader_with_warning(mock_exists, mock_makedirs, mock_popen):
+def test_compile_shader_with_warning(mock_exists, mock_makedirs, mock_popen, mock_validate):
     """Test compile_shader with X4000 warning."""
     mock_exists.return_value = True
+    mock_validate.return_value = None  # No validation error
     mock_process = MagicMock()
     mock_process.communicate.return_value = (
         "Compiled",
@@ -147,12 +157,14 @@ def test_compile_shader_with_warning(mock_exists, mock_makedirs, mock_popen):
     assert "GrassCollision::GetDisplacedPosition" in result["log"] or "Invalid shader file" in result["log"]
 
 
+@patch("hlslkit.compile_shaders.validate_shader_inputs")
 @patch("hlslkit.compile_shaders.subprocess.Popen")
 @patch("hlslkit.compile_shaders.os.makedirs")
 @patch("hlslkit.compile_shaders.os.path.exists")
-def test_compile_shader_invalid_flag(mock_exists, mock_makedirs, mock_popen):
+def test_compile_shader_invalid_flag(mock_exists, mock_makedirs, mock_popen, mock_validate):
     """Test compile_shader with invalid compiler flag."""
     mock_exists.return_value = True
+    mock_validate.return_value = None  # No validation error
     mock_process = MagicMock()
     mock_process.communicate.return_value = ("", "error: unrecognized option 'D3DCOMPILE_INVALID_FLAG'")
     mock_process.returncode = 1
@@ -171,15 +183,17 @@ def test_compile_shader_invalid_flag(mock_exists, mock_makedirs, mock_popen):
         force_partial_precision=False,
     )
     assert result["success"] is False
-    assert "Invalid shader file" in result["log"]
+    assert "error: unrecognized option 'D3DCOMPILE_INVALID_FLAG'" in result["log"]
 
 
+@patch("hlslkit.compile_shaders.validate_shader_inputs")
 @patch("hlslkit.compile_shaders.subprocess.Popen")
 @patch("hlslkit.compile_shaders.os.makedirs")
 @patch("hlslkit.compile_shaders.os.path.exists")
-def test_compile_shader_subprocess_timeout(mock_exists, mock_makedirs, mock_popen):
+def test_compile_shader_subprocess_timeout(mock_exists, mock_makedirs, mock_popen, mock_validate):
     """Test compile_shader with subprocess timeout."""
     mock_exists.return_value = True
+    mock_validate.return_value = None  # No validation error
     mock_process = MagicMock()
     mock_process.communicate.side_effect = TimeoutExpired(cmd="fxc.exe", timeout=10)
     mock_popen.return_value = mock_process
@@ -197,7 +211,7 @@ def test_compile_shader_subprocess_timeout(mock_exists, mock_makedirs, mock_pope
         force_partial_precision=False,
     )
     assert result["success"] is False
-    assert "Invalid shader file" in result["log"]
+    assert "timed out" in result["log"]
 
 
 @patch("hlslkit.compile_shaders.yaml.safe_load")
