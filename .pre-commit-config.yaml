@@ -21,13 +21,12 @@ repos:
       hooks:
           - id: prettier
 
-    - repo: https://github.com/christophmeissner/pytest-pre-commit
-      rev: 1.0.0
+    - repo: local
       hooks:
           - id: pytest
             name: pytest (run all tests)
-            entry: pytest
+            entry: .venv/Scripts/python.exe -m pytest
             language: system
             pass_filenames: false
-            types: [python]
+            always_run: true
             verbose: true

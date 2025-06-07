@@ -28,11 +28,12 @@ Key features:
 
 ## Prerequisites
 
--   **Python 3.8+**
+-   **Python 3.10+**
 -   **Poetry**: For dependency management and virtual environment setup.
 -   **Dependencies**: Defined in `pyproject.toml`:
-    -   Required: `pyyaml`, `tqdm`.
-    -   Optional: `psutil` (system monitoring), `gooey` (GUI), `py-markdown-table` (buffer reports), `pcpp` (preprocessor for `buffer_scan.py`).
+    -   **Required**: `pyyaml`, `tqdm`, `py-markdown-table`, `psutil`, `pcpp`, `jellyfish`.
+    -   **Optional**: Install with `poetry install -E gui`:
+        -   `gui`: `gooey` (GUI interface, Windows recommended)
 -   **fxc.exe**: DirectX shader compiler (included in Windows SDK or DirectX SDK).
 -   **CommunityShaders.log**: Log file from Skyrim Community Shaders for `generate_shader_defines.py`.
 

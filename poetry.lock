@@ -206,7 +206,7 @@ files = [
 name = "colored"
 version = "1.4.4"
 description = "Simple library for color and formatting to terminal"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "colored-1.4.4.tar.gz", hash = "sha256:04ff4d4dd514274fe3b99a21bb52fb96f2688c01e93fba7bef37221e7cb56ce0"},
@@ -389,7 +389,7 @@ dev = ["flake8", "markdown", "twine", "wheel"]
 name = "gooey"
 version = "1.0.8.1"
 description = "Turn (almost) any command line program into a full GUI application with one line"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "Gooey-1.0.8.1-py2.py3-none-any.whl", hash = "sha256:222793cf4a5dd2f9d5c3174ad7369c3df541d91a49e54d51bbee95745ed75ae2"},
@@ -812,7 +812,7 @@ files = [
 name = "numpy"
 version = "2.2.6"
 description = "Fundamental package for array computing in Python"
-optional = false
+optional = true
 python-versions = ">=3.10"
 files = [
     {file = "numpy-2.2.6-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:b412caa66f72040e6d268491a59f2c43bf03eb6c96dd8f0307829feb7fa2b6fb"},
@@ -924,7 +924,7 @@ files = [
 name = "pillow"
 version = "10.4.0"
 description = "Python Imaging Library (Fork)"
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = [
     {file = "pillow-10.4.0-cp310-cp310-macosx_10_10_x86_64.whl", hash = "sha256:4d9667937cfa347525b319ae34375c37b9ee6b525440f3ef48542fcf66f2731e"},
@@ -1118,7 +1118,7 @@ windows-terminal = ["colorama (>=0.4.6)"]
 name = "pygtrie"
 version = "2.5.0"
 description = "A pure Python trie data structure implementation."
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "pygtrie-2.5.0-py3-none-any.whl", hash = "sha256:8795cda8105493d5ae159a5bef313ff13156c5d4d72feddefacaad59f8c8ce16"},
@@ -1549,7 +1549,7 @@ watchmedo = ["PyYAML (>=3.10)"]
 name = "wxpython"
 version = "4.2.2"
 description = "Cross platform GUI toolkit for Python, \"Phoenix\" version"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "wxPython-4.2.2-cp310-cp310-macosx_12_0_x86_64.whl", hash = "sha256:a83bc118417b715ee8fd7143faaf51adaa041ccae22cc6de99bc7f7bb7fc44ef"},
@@ -1577,7 +1577,10 @@ files = [
 numpy = {version = "*", markers = "python_version >= \"3.0\" and python_version < \"3.12\""}
 six = "*"
 
+[extras]
+gui = ["gooey"]
+
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4.0"
-content-hash = "d79771449bbac426fb1100eae43a9123ebd0247e079100fbef8499b62788c0fb"
+content-hash = "d5510b025df3454d7f7ca5b912b9093f4fa561443b3da83d5ecf61baef1806d2"
