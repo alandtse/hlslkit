@@ -579,6 +579,9 @@ def process_file(
                 elif result.group("template_name"):
                     template_type = result.group("template_name")
 
+                # Create a key for this define combination
+                define_key = "_".join(sorted(defines.keys())) if defines else "no_defines"
+
                 entry = {
                     "Register": f"{result.group('buffer_type').lower()}{result.group('buffer_number')}",
                     "Feature": feature,
@@ -595,8 +598,28 @@ def process_file(
                     "Matching Struct Analysis": "",
                     "Original Line": mapped_line,  # Store original line number,
                     "Template Type": template_type,
+                    "Define Combinations": set(),  # Track define combinations
                 }
                 result_map[key] = entry
+            # Record this define combination with consistent ordering
+            if defines:
+                # Create consistent define key with standard ordering
+                define_parts = []
+                if "PSHADER" in defines:
+                    define_parts.append("PSHADER")
+                if "VSHADER" in defines:
+                    define_parts.append("VSHADER")
+                if "VR" in defines:
+                    define_parts.append("VR")
+                define_key = "_".join(define_parts) if define_parts else "no_defines"
+            else:
+                define_key = "no_defines"
+
+            if "Define Combinations" not in entry:
+                entry["Define Combinations"] = set()
+            entry["Define Combinations"].add(define_key)
+
+            # Update boolean flags
             for define in defines:
                 entry[define] = True
             if "PSHADER" in defines:
