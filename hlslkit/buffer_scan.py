@@ -702,12 +702,14 @@ def scan_files(
 def print_buffers_and_conflicts(
     result_map: dict[str, dict[str, Any]],
     compilation_units: dict[tuple[str, frozenset[str]], dict[str, set[str]]],
+    show_conflicts: bool = False,
 ) -> None:
     """Print the buffers and any conflicts as a markdown table and report.
 
     Args:
         result_map: Dictionary of unique buffer entries.
         compilation_units: Dictionary of register usage per compilation unit.
+        show_conflicts: Whether to print conflict analysis sections.
     """
     if not result_map:
         print("No results found.")
@@ -753,22 +755,60 @@ def print_buffers_and_conflicts(
     table = markdown_table(filtered_results).set_params(quote=False, row_sep="markdown").get_markdown()
     print(table)
 
-    conflicts: dict[str, list[dict[str, Any]]] = {}
-    for (path, defines), registers in compilation_units.items():
-        for reg, features in registers.items():
-            if len(features) > 1:
-                if reg not in conflicts:
-                    conflicts[reg] = []
-                conflicts[reg].append({"path": path, "defines": defines, "features": features})
+    if show_conflicts:
+        conflicts: dict[str, list[dict[str, Any]]] = {}
+        for (path, defines), registers in compilation_units.items():
+            for reg, features in registers.items():
+                if len(features) > 1:
+                    if reg not in conflicts:
+                        conflicts[reg] = []
+                    conflicts[reg].append({"path": path, "defines": defines, "features": features})
 
-    if conflicts:
-        print("\n# Conflicts")
-        for reg, conflict_list in sorted(conflicts.items()):
-            print(f"\n## {reg}")
-            for conflict in conflict_list:
-                print(f"- **Path**: {conflict['path']}")
-                print(f"  **Defines**: {', '.join(sorted(str(d) for d in conflict['defines']))}")
-                print(f"  **Features**: {', '.join(sorted(str(f) for f in conflict['features']))}")
+        if conflicts:
+            print("\n# Conflicts")
+            for reg, conflict_list in sorted(conflicts.items()):
+                print(f"\n## {reg}")
+                for conflict in conflict_list:
+                    print(f"- **Path**: {conflict['path']}")
+                    print(f"  **Defines**: {', '.join(sorted(str(d) for d in conflict['defines']))}")
+                    print(f"  **Features**: {', '.join(sorted(str(f) for f in conflict['features']))}")
+
+        # Additional analysis: Check for register conflicts within same define context
+        register_conflicts = {}
+        for entry in sorted_results:
+            reg = entry.get("Register", "")
+            if not reg:
+                continue
+
+            # Group by register and define combination
+            define_combos = entry.get("Define Combinations", set())
+            for combo in define_combos:
+                key = f"{reg}_{combo}"
+                if key not in register_conflicts:
+                    register_conflicts[key] = []
+                register_conflicts[key].append({
+                    "name": entry.get("Name", ""),
+                    "file": entry.get("File Path", ""),
+                    "feature": entry.get("Feature", ""),
+                    "type": entry.get("Type", ""),
+                })
+
+        # Report register conflicts
+        true_conflicts = {k: v for k, v in register_conflicts.items() if len(v) > 1}
+        if true_conflicts:
+            print("\n# Register Conflicts (Same Register + Define Combination)")
+            for key, conflicts in sorted(true_conflicts.items()):
+                reg, combo = key.rsplit("_", 1)
+                print(f"\n## Register {reg} with defines: {combo.replace('_', ', ')}")
+                for conflict in conflicts:
+                    print(
+                        f"- **{conflict['name']}** ({conflict['type']}) in `{conflict['file']}` - Feature: {conflict['feature']}"
+                    )
+        else:
+            print("\n# Register Conflicts")
+            print(
+                "No register conflicts detected - all buffers use unique register slots within their define contexts."
+            )
 
 
 def calculate_struct_size(fields: list[FieldDict], align_to_16: bool = False) -> int:
@@ -2731,6 +2771,11 @@ def main() -> None:
         action="store_true",
         help="Show fields of the top candidate struct even if the match was rejected",
     )
+    parser.add_argument(
+        "--show-conflicts",
+        action="store_true",
+        help="Show register conflicts analysis (default: disabled)",
+    )
     args = parser.parse_args()
     cwd = os.getcwd()
 
@@ -2791,7 +2836,7 @@ def main() -> None:
                     logging.debug(f"Added struct definition to buffer_locations: {hlsl_name} from {file}:{line}")
                 else:
                     logging.debug(f"Skipping struct {hlsl_name} - no file information")
-    print_buffers_and_conflicts(result_map, compilation_units)
+    print_buffers_and_conflicts(result_map, compilation_units, show_conflicts=args.show_conflicts)
     analyzer.print_comparison_tables(only_matched=args.only_matched, show_top_candidate=args.show_top_candidate)
 
 
