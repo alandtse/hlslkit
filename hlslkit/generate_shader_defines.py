@@ -65,10 +65,6 @@ def parse_timestamp(line: str) -> datetime:
 
     Returns:
         datetime: The parsed datetime object.
-
-    Example:
-        >>> parse_timestamp("[12:34:56.789] [123] [D] Compiling...")
-        datetime.datetime(1900, 1, 1, 12, 34, 56, 789000)
     """
     timestamp_str = line[1:13]
     return datetime.strptime(timestamp_str, "%H:%M:%S.%f")
@@ -82,10 +78,6 @@ def count_compiling_lines(log_file: str) -> int:
 
     Returns:
         int: Number of lines containing '[D] Compiling'.
-
-    Example:
-        >>> count_compiling_lines("CommunityShaders.log")
-        10
     """
     with open(log_file, encoding="utf-8") as f:
         return sum(1 for line in f if "[D] Compiling" in line)
@@ -99,10 +91,6 @@ def count_log_blocks(log_file: str) -> int:
 
     Returns:
         int: Number of log blocks.
-
-    Example:
-        >>> count_log_blocks("CommunityShaders.log")
-        5
     """
     with open(log_file, encoding="utf-8") as f:
         return sum(
@@ -121,9 +109,7 @@ def count_log_blocks(log_file: str) -> int:
 
 
 def normalize_path(file_path: str) -> str:
-    """Normalize a file path by standardizing separators and extracting relative path.
-
-    This function ensures paths are consistent across platforms, converting backslashes to forward slashes
+    """Normalize a file path by standardizing separators and extracting relative path.    This function ensures paths are consistent across platforms, converting backslashes to forward slashes
     and attempting to extract the relative path from the `Shaders` directory (case-insensitive). If the
     `Shaders` directory is not found, the path is returned as-is with normalized separators.
 
@@ -132,14 +118,6 @@ def normalize_path(file_path: str) -> str:
 
     Returns:
         str: The normalized file path, relative to the Shaders directory if present.
-
-    Example:
-        >>> normalize_path("C:/Projects/Shaders/src/test.hlsl")
-        'src/test.hlsl'
-        >>> normalize_path("C:/Projects/SHADERS/src/test.hlsl")
-        'src/test.hlsl'
-        >>> normalize_path("src/test.hlsl")
-        'src/test.hlsl'
     """
     file_path = file_path.replace("\\", "/")
     file_path = re.sub(r"/+", "/", file_path)
@@ -162,10 +140,6 @@ def get_shader_type_from_entry(entry_point: str) -> str:
 
     Returns:
         str: The shader type (VSHADER, PSHADER, CSHADER, or UNKNOWN).
-
-    Example:
-        >>> get_shader_type_from_entry("main:vertex:1234")
-        'VSHADER'
     """
     parts = entry_point.split(":")
     if len(parts) >= 3:
@@ -183,12 +157,6 @@ def collect_tasks(lines: list[str]) -> list[CompilationTask]:
 
     Returns:
         list[CompilationTask]: List of extracted compilation tasks.
-
-    Example:
-        >>> lines = ["[12:34:56.789] [123] [D] Compiling src/test.hlsl main:vertex:1234 to A=1"]
-        >>> tasks = collect_tasks(lines)
-        >>> len(tasks)
-        1
     """
     tasks = []
     compile_regex = re.compile(
@@ -245,12 +213,6 @@ def populate_configs(tasks: list[CompilationTask], shader_configs: dict) -> dict
 
     Returns:
         dict: Updated shader configurations.
-
-    Example:
-        >>> tasks = [CompilationTask("123", "main:vertex:1234", "src/test.hlsl", ["A=1"], datetime.now())]
-        >>> configs = populate_configs(tasks, {})
-        >>> configs["src/test.hlsl"]["VSHADER"]
-        [{'entry': 'main:vertex:1234', 'defines': ['A=1']}]
     """
     total_lines = len(tasks)
     with tqdm(total=total_lines, desc="Parsing compiling lines", unit="line") as pbar:
@@ -300,13 +262,6 @@ def collect_warnings_and_errors(
 
     Returns:
         tuple[dict, dict]: Updated warnings and errors dictionaries.
-
-    Example:
-        >>> lines = ["[12:34:56.789] [123] [E] Failed to compile ..."]
-        >>> tasks = [CompilationTask("123", "main:vertex:1234", "src/test.hlsl", [], datetime.now())]
-        >>> warnings, errors = collect_warnings_and_errors(lines, tasks, {}, {}, 1)
-        >>> errors
-        {'src/test.hlsl:main:vertex:1234': [...]}
     """
     warning_entry_regex = re.compile(r"^(.*?)\((\d+(?:,\d+(?:-\d+)?|\:\d+)?)\): warning (\w+): (.+)$")
     error_e_regex = re.compile(
@@ -433,11 +388,6 @@ def parse_log(
 
     Returns:
         tuple[dict, dict, dict]: Shader configurations, warnings, and errors.
-
-    Example:
-        >>> configs, warnings, errors = parse_log("CommunityShaders.log")
-        >>> configs["src/test.hlsl"]["VSHADER"]
-        [{'entry': 'main:vertex:1234', 'defines': ['A=1']}]
     """
     shader_configs = update_configs or {}
     warnings = update_warnings or {}
@@ -459,15 +409,8 @@ def compute_common_defines(shader_configs: dict) -> tuple[list, dict, dict]:
 
     Args:
         shader_configs (dict): Shader configurations.
-
     Returns:
         tuple[list, dict, dict]: Global common defines, type-specific common defines, and file-type-specific common defines.
-
-    Example:
-        >>> configs = {"test.hlsl": {"VSHADER": [{"defines": ["A=1"]}]}}
-        >>> global_common, type_common, file_common = compute_common_defines(configs)
-        >>> global_common
-        ['A=1']
     """
     all_defines = [
         config["defines"]
@@ -507,15 +450,8 @@ def generate_yaml_data(shader_configs: dict, warnings: dict, errors: dict) -> di
         shader_configs (dict): Shader configurations.
         warnings (dict): Compilation warnings.
         errors (dict): Compilation errors.
-
     Returns:
         dict: YAML-compatible data structure.
-
-    Example:
-        >>> configs = {"test.hlsl": {"VSHADER": [{"entry": "main:vertex:1234", "defines": ["A=1"]}]}}
-        >>> yaml_data = generate_yaml_data(configs, {}, {})
-        >>> yaml_data["shaders"][0]["file"]
-        'test.hlsl'
     """
     global_common, type_common, file_type_common = compute_common_defines(shader_configs)
     yaml_data = {
@@ -565,15 +501,9 @@ def generate_yaml_data(shader_configs: dict, warnings: dict, errors: dict) -> di
 
 def save_yaml(yaml_data: dict, output_file: str) -> None:
     """Save the YAML data to a file.
-
     Args:
-        yaml_data (dict): YAML data to save.
-        output_file (str): Path to the output YAML file.
-
-    Example:
-        >>> yaml_data = {"common_defines": ["A=1"]}
-        >>> save_yaml(yaml_data, "shader_defines.yaml")
-        # Creates shader_defines.yaml with the specified data
+    yaml_data (dict): YAML data to save.
+    output_file (str): Path to the output YAML file.
     """
     with open(output_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(yaml_data, f, sort_keys=False, allow_unicode=True)
@@ -584,11 +514,6 @@ def parse_arguments() -> argparse.Namespace:
 
     Returns:
         argparse.Namespace: Parsed command-line arguments.
-
-    Example:
-        >>> args = parse_arguments()  # Run with: python generate_shader_defines.py --log mylog.log
-        >>> args.log
-        'mylog.log'
     """
     is_gui_mode = HAS_GOOEY and ("--gui" in sys.argv or "-g" in sys.argv)
     parser_class = GooeyParser if is_gui_mode else argparse.ArgumentParser
@@ -614,11 +539,6 @@ def main() -> int:
 
     Returns:
         int: Exit code (0 for success, 1 for errors).
-
-    Example:
-        >>> # Run with: python generate_shader_defines.py
-        >>> main()
-        0
     """
     args = parse_arguments()
     logging.basicConfig(

@@ -1,6 +1,17 @@
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-from hlslkit.generate_shader_defines import get_shader_type_from_entry, normalize_path, parse_log
+from hlslkit.generate_shader_defines import (
+    CompilationTask,
+    collect_tasks,
+    count_compiling_lines,
+    count_log_blocks,
+    get_shader_type_from_entry,
+    normalize_path,
+    parse_log,
+    parse_timestamp,
+    populate_configs,
+)
 
 
 def test_normalize_path_with_shaders():
@@ -185,3 +196,82 @@ def test_parse_log_with_error(mock_open):
         {"entry": "Grass:Vertex:4", "defines": ["VSHADER", "D3DCOMPILE_DEBUG"]}
     ]
     assert errors == {}  # No errors parsed, based on failure
+
+
+# Doctest examples converted to unit tests
+def test_parse_timestamp_doctest():
+    """Test parse_timestamp function from doctest example."""
+    result = parse_timestamp("[12:34:56.789] [123] [D] Compiling...")
+    expected = datetime(1900, 1, 1, 12, 34, 56, 789000)
+    assert result == expected
+
+
+def test_collect_tasks_doctest():
+    """Test collect_tasks function from doctest example."""
+    lines = ["[12:34:56.789] [123] [D] Compiling src/test.hlsl main:vertex:1234 to A=1"]
+    tasks = collect_tasks(lines)
+    assert len(tasks) == 1
+    assert tasks[0].entry_point == "main:vertex:1234"
+    assert tasks[0].file_path == "src/test.hlsl"
+    assert tasks[0].defines == ["A=1"]
+
+
+def test_populate_configs_doctest():
+    """Test populate_configs function from doctest example."""
+    task = CompilationTask("123", "main:vertex:1234", "src/test.hlsl", ["A=1"], datetime.now())
+    tasks = [task]
+    configs = populate_configs(tasks, {})
+    expected_config = [{"entry": "main:vertex:1234", "defines": ["A=1"]}]
+    assert configs["src/test.hlsl"]["VSHADER"] == expected_config
+
+
+@patch("hlslkit.generate_shader_defines.open")
+def test_parse_log_doctest(mock_open):
+    """Test parse_log function from doctest example."""
+    mock_file = MagicMock()
+    mock_file.__enter__.return_value.readlines.return_value = [
+        "[12:34:56.789] [123] [D] Compiling src/test.hlsl main:vertex:1234 to A=1",
+        "[12:34:56.790] [123] [D] Compiled shader main:vertex:1234",
+    ]
+    mock_open.return_value = mock_file
+
+    configs, warnings, errors = parse_log("CommunityShaders.log")
+    expected_config = [{"entry": "main:vertex:1234", "defines": ["A=1"]}]
+    assert configs["src/test.hlsl"]["VSHADER"] == expected_config
+
+
+@patch("hlslkit.generate_shader_defines.open")
+def test_count_compiling_lines_doctest(mock_open):
+    """Test count_compiling_lines function from doctest example."""
+    mock_file = MagicMock()
+    mock_file.__enter__.return_value.__iter__.return_value = [
+        "[12:34:56.789] [123] [D] Compiling src/test1.hlsl main:vertex:1234 to A=1",
+        "[12:34:56.790] [123] [D] Some other log entry",
+        "[12:34:56.791] [123] [D] Compiling src/test2.hlsl main:pixel:5678 to B=2",
+        "[12:34:56.792] [123] [D] Another log entry",
+        "[12:34:56.793] [123] [D] Compiling src/test3.hlsl main:compute:9012 to C=3",
+    ]
+    mock_open.return_value = mock_file
+
+    result = count_compiling_lines("CommunityShaders.log")
+    assert result == 3  # Should count 3 "[D] Compiling" lines
+
+
+@patch("hlslkit.generate_shader_defines.open")
+def test_count_log_blocks_doctest(mock_open):
+    """Test count_log_blocks function from doctest example."""
+    mock_file = MagicMock()
+    mock_file.__enter__.return_value.__iter__.return_value = [
+        "[12:34:56.789] [123] [D] Compiling src/test1.hlsl main:vertex:1234 to A=1",
+        "[12:34:56.790] [123] [D] Shader logs:",
+        "[12:34:56.791] [123] [E] Failed to compile Pixel shader",
+        "[12:34:56.792] [123] [W] Shader compilation failed",
+        "[12:34:56.793] [123] [D] Adding Completed shader to map",
+        "[12:34:56.794] [123] [D] Some other log entry",
+    ]
+    mock_open.return_value = mock_file
+
+    result = count_log_blocks("CommunityShaders.log")
+    assert (
+        result == 4
+    )  # Should count 4 log blocks (Shader logs, Failed to compile, compilation failed, Adding Completed)
