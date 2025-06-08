@@ -699,6 +699,18 @@ def scan_files(
     return results, compilation_units
 
 
+def _format_shader_usage(entry: dict[str, Any]) -> str:
+    """Format shader usage in a compact form (P=Pixel, V=Vertex, VR=VR support)."""
+    parts = []
+    if entry.get("PSHADER", False):
+        parts.append("P")
+    if entry.get("VSHADER", False):
+        parts.append("V")
+    if entry.get("VR", False):
+        parts.append("VR")
+    return "+".join(parts) if parts else ""
+
+
 def print_buffers_and_conflicts(
     result_map: dict[str, dict[str, Any]],
     compilation_units: dict[tuple[str, frozenset[str]], dict[str, set[str]]],
@@ -726,12 +738,7 @@ def print_buffers_and_conflicts(
             "Type": str(entry.get("Type", "")),
             "Name": str(entry.get("Name", "")),
             "File": str(entry.get("File", "")),
-            "Register Type": str(entry.get("Register Type", "")),
-            "Buffer Type": str(entry.get("Buffer Type", "")),
-            "Number": str(entry.get("Number", "")),
-            "PSHADER": str(entry.get("PSHADER", False)),
-            "VSHADER": str(entry.get("VSHADER", False)),
-            "VR": str(entry.get("VR", False)),
+            "Shaders": _format_shader_usage(entry),
             "Struct Analysis": str(entry.get("Matching Struct Analysis", "")),
         }
         for entry in sorted_results
