@@ -52,3 +52,6 @@ jobs:
             - name: Upload coverage reports to Codecov with GitHub Action on Python 3.11
               uses: codecov/codecov-action@v5
               if: ${{ matrix.python-version == '3.11' }}
+              with:
+                  token: ${{ secrets.CODECOV_TOKEN }}
+                  slug: alandtse/hlslkit
