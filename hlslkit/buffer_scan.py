@@ -246,6 +246,50 @@ def create_link(text: str, line: int | None = None) -> str:
     return base_url
 
 
+def create_struct_section_id(struct_name: str, filename: str) -> str:
+    """Generate a clean section ID for struct analysis cross-references.
+
+    Args:
+        struct_name: Name of the struct
+        filename: Filename containing the struct
+
+    Returns:
+        str: Clean section ID suitable for markdown anchors
+    """
+    clean_filename = os.path.basename(filename).lower().replace(".", "").replace("(", "").replace(")", "")
+    clean_struct_name = struct_name.lower().replace("(", "").replace(")", "")
+    return f"hlsl-{clean_struct_name}-{clean_filename}"
+
+
+def create_struct_analysis_link(struct_name: str, filename: str, status: str) -> str:
+    """Generate a struct analysis link with proper formatting.
+
+    Args:
+        struct_name: Name of the struct
+        filename: Filename containing the struct
+        status: Match status (Matched, Mismatched, or Unmatched)
+
+    Returns:
+        str: Formatted markdown link for struct analysis
+    """
+    section_id = create_struct_section_id(struct_name, filename)
+
+    if status == "Unmatched":
+        return f"[Unmatched](#{section_id})"
+    elif status.startswith("Mismatched"):
+        # Extract the matched struct name from status like "Mismatched (StructName)"
+        if "(" in status and ")" in status:
+            matched_name = status[status.find("(") + 1 : status.find(")")]
+            return f"[Mismatched (`{matched_name}`)](#{section_id})"
+        else:
+            return f"[Mismatched](#{section_id})"
+    elif status == "Matched":
+        return f"[`{struct_name}`](#{section_id})"
+    else:
+        # For any other status, use the struct name with backticks
+        return f"[`{struct_name}`](#{section_id})"
+
+
 def finditer_with_line_numbers(
     pattern: str | Pattern[str],
     string: str,
@@ -1677,14 +1721,10 @@ def generate_comparison_table(
         table += f"\n{'#' * (depth + 1)} Summary:\n"
         table += f"- Total HLSL Fields: {hlsl_total_fields}\n"
         table += "- Status: Unmatched\n"
-    else:
-        # Handle matched or rejected candidate case
-        if is_rejected_candidate:
-            table += f"**C++**: `{cpp_name}`\n"
-        else:
-            table += f"**C++**: `{cpp_name}`\n"
+    else:  # Handle matched or rejected candidate case
+        table += f"\n**C++**: `{cpp_name}`\n"
         table += f"**C++ File:** [{cpp_data.get('file', '')}:{cpp_data.get('line', '')}]({create_link(cpp_data.get('file', ''), cpp_data.get('line', ''))})\n"
-        table += f"**Match Score:** {report.get('score', 0):.2f}\n"
+        table += f"\n**Match Score:** {report.get('score', 0):.2f}\n"
 
         # Field comparison table (for both matched and rejected candidates)
         # Always try to show field comparison for matched/rejected candidates
@@ -2202,7 +2242,6 @@ class StructAnalyzer:
             # New logic for status:
             if not match.cpp_name:
                 status = "Unmatched"
-                display_name = "Unmatched"
                 match_counts["Unmatched"] += 1
             else:
                 field_diff_count = match.report.get("field_diff_count", 0)
@@ -2214,23 +2253,19 @@ class StructAnalyzer:
                 add_debug_info(debug_msg)
                 if diff_ratio > 0.5 or match.score < 0.75:
                     status = "Unmatched"
-                    display_name = "Unmatched"
                     match_counts["Unmatched"] += 1
                 elif field_diff_count == 0:
                     status = "Matched"
-                    display_name = match.cpp_name
                     match_counts["Matched"] += 1
                 elif field_diff_count <= 1:
                     status = f"Mismatched ({match.cpp_name})"
-                    display_name = f"Mismatched ({match.cpp_name})"
                     match_counts["Mismatched"] += 1
                 else:
                     status = f"Mismatched ({match.cpp_name})"
-                    display_name = f"Mismatched ({match.cpp_name})"
                     match_counts["Mismatched"] += 1
 
             analysis_links[key] = {
-                "link": f"[{display_name}](#hlsl-{match.hlsl_name.lower()}-{os.path.basename(match.hlsl_file).lower()})",
+                "link": create_struct_analysis_link(match.hlsl_name, match.hlsl_file, status),
                 "is_match": bool(match.cpp_name),
                 "cpp_name": match.cpp_name,
                 "cpp_file": match.cpp_file,
@@ -2344,7 +2379,7 @@ class StructAnalyzer:
                     status=self.analysis_links.get(f"{match.hlsl_file.lower()}:{match.hlsl_name.lower()}", {}).get(
                         "status", ""
                     ),
-                    section_id=f"hlsl-{match.hlsl_name.lower()}-{os.path.basename(match.hlsl_file).lower()}",
+                    section_id=create_struct_section_id(match.hlsl_name, match.hlsl_file),
                 )
             )
 
@@ -2408,23 +2443,23 @@ class StructAnalyzer:
                             # For regular candidate tuples, use empty alignment data
                             align_matches = []
                             report = table["report"]
-
-                        print(
-                            generate_comparison_table(
-                                table["hlsl_name"],
-                                cpp_name,
-                                table["hlsl_data"],
-                                cpp_data,
-                                align_matches,
-                                report,
-                                table["candidates"],
-                                status=self.analysis_links.get(
-                                    f"{table['hlsl_data']['file'].lower()}:{table['hlsl_name'].lower()}",
-                                    {},
-                                ).get("status", ""),
-                                show_top_candidate=show_top_candidate,
+                            print(
+                                generate_comparison_table(
+                                    table["hlsl_name"],
+                                    cpp_name,
+                                    table["hlsl_data"],
+                                    cpp_data,
+                                    align_matches,
+                                    report,
+                                    table["candidates"],
+                                    status=self.analysis_links.get(
+                                        f"{table['hlsl_data']['file'].lower()}:{table['hlsl_name'].lower()}",
+                                        {},
+                                    ).get("status", ""),
+                                    show_top_candidate=show_top_candidate,
+                                    section_id=create_struct_section_id(table["hlsl_name"], table["hlsl_data"]["file"]),
+                                )
                             )
-                        )
                         printed_keys.add(composite_key)
                     # Print sub-buffers
                     for sub_key in sub_keys:
