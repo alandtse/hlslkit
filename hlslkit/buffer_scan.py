@@ -20,6 +20,20 @@ try:
 except ImportError:
     pathspec = None
 
+# === Module-level Debug Storage ===
+DEBUG_INFO = []
+
+
+def add_debug_info(message: str) -> None:
+    """Add debug information to be included in the output."""
+    DEBUG_INFO.append(message)
+
+
+def clear_debug_info() -> None:
+    """Clear collected debug information."""
+    DEBUG_INFO.clear()
+
+
 # Type aliases
 StructDict: TypeAlias = dict[str, Any]
 FieldDict: TypeAlias = dict[str, Any]
@@ -705,7 +719,14 @@ def print_buffers_and_conflicts(
         if entry.get("Type", "").strip() and entry.get("Name", "").strip() and entry.get("File", "").strip()
     ]
 
-    print(f"\n# Buffer Table (generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
+    print("<!--")
+    print("DEBUG INFORMATION (hidden):")
+    # Print any debug information that was collected during analysis
+    for debug_msg in DEBUG_INFO:
+        print(debug_msg)
+    print("-->")
+    print()
+    print(f"# Buffer Table (generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
     table = markdown_table(filtered_results).set_params(quote=False, row_sep="markdown").get_markdown()
     print(table)
 
@@ -2117,9 +2138,8 @@ class StructAnalyzer:
                 hlsl_total_fields = match.report.get("total_fields", 0)
                 min_fields = min(hlsl_total_fields, cpp_total_fields)
                 diff_ratio = field_diff_count / max(1, min_fields)
-                print(
-                    f"DEBUG: {match.hlsl_name} vs {match.cpp_name}: field_diff_count={field_diff_count}, min_fields={min_fields}, diff_ratio={diff_ratio}, score={match.score}"
-                )
+                debug_msg = f"DEBUG: {match.hlsl_name} vs {match.cpp_name}: field_diff_count={field_diff_count}, min_fields={min_fields}, diff_ratio={diff_ratio}, score={match.score}"
+                add_debug_info(debug_msg)
                 if diff_ratio > 0.5 or match.score < 0.75:
                     status = "Unmatched"
                     display_name = "Unmatched"
