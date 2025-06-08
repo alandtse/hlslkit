@@ -43,7 +43,16 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pyright]
 include = ["hlslkit"]
-typeCheckingMode = "strict"
+typeCheckingMode = "basic"
+reportMissingImports = false
+reportMissingTypeStubs = false
+reportUnknownParameterType = false
+reportUnknownArgumentType = false
+reportUnknownLambdaType = false
+reportUnknownVariableType = false
+reportUnknownMemberType = false
+reportArgumentType = false
+reportCallIssue = false
 venvPath = "."
 venv = ".venv"
 

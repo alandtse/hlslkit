@@ -30,6 +30,7 @@ import time
 from collections import deque
 from datetime import datetime
 from types import FrameType
+from typing import Any
 
 import yaml
 from tqdm import tqdm
@@ -141,11 +142,10 @@ def validate_shader_inputs(
         str | None: Error message if validation fails, else None.
 
     Example:
-        >>> validate_shader_inputs("fxc.exe", "test.hlsl", "build", [], "src")
-        None
+        >>> validate_shader_inputs("fxc.exe", "test.hlsl", "build", [], "src")        None
     """
-    fxc_path = shutil.which(fxc_path)
-    if not fxc_path:
+    fxc_executable = shutil.which(fxc_path)
+    if not fxc_executable:
         return "fxc.exe not found in PATH or specified path"
     shader_file_path = os.path.join(shader_dir, os.path.basename(shader_file))
     if not os.path.isfile(shader_file_path) or not shader_file.endswith((".hlsl", ".hlsli")):
@@ -172,7 +172,7 @@ def compile_shader(
     strip_debug_defines: bool = False,
     optimization_level: str = "1",
     force_partial_precision: bool = False,
-) -> dict[str, any]:
+) -> dict[str, Any]:
     """Compile a shader using fxc.exe.
 
     Args:
@@ -659,7 +659,7 @@ def log_new_warnings(new_warnings: list[dict], results: list[dict], output_dir: 
     warning_logger.removeHandler(warning_handler)
 
 
-def parse_args_for_defaults() -> dict[str, any]:
+def parse_args_for_defaults() -> dict[str, Any]:
     """Parse command-line arguments to extract default values.
 
     Returns:
@@ -883,7 +883,7 @@ def setup_environment(args: argparse.Namespace) -> tuple[int, int | None, bool]:
     signal.signal(signal.SIGINT, handle_termination)
     signal.signal(signal.SIGTERM, handle_termination)
     is_ci = os.getenv("GITHUB_ACTIONS") == "true"
-    cpu_count = os.cpu_count() if os.cpu_count() is not None else 4
+    cpu_count = os.cpu_count() or 4
     physical_cores = (
         psutil.cpu_count(logical=False) if HAS_PSUTIL and psutil.cpu_count(logical=False) is not None else None
     )
@@ -1028,13 +1028,13 @@ def manage_jobs(
 
 def submit_tasks(
     executor: concurrent.futures.ThreadPoolExecutor,
-    task_iterator: any,  # Iterator cannot be typed precisely without collections.abc
+    task_iterator: Any,  # Iterator cannot be typed precisely without collections.abc
     active_tasks: int,
     target_jobs: int,
     args: argparse.Namespace,
     futures: dict,
     shader_dir: str,
-) -> tuple[int, any]:
+) -> tuple[int, Any]:
     """Submit compilation tasks to the executor.
 
     Args:
@@ -1274,13 +1274,12 @@ def main() -> int:
     default_jobs = 4
     args = parse_arguments(default_jobs)
     cpu_count, physical_cores, is_ci = setup_environment(args)
-
     try:
         results = run_compilation(args, cpu_count, physical_cores, is_ci)
     except KeyboardInterrupt:
         logging.warning("Keyboard interrupt received")
         handle_termination()
-        results = results if "results" in locals() else []
+        results = []
 
     if stop_event.is_set() and results:
         suppress_warnings = [code.strip() for code in args.suppress_warnings.split(",") if code.strip()]

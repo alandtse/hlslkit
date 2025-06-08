@@ -30,3 +30,10 @@ repos:
             pass_filenames: false
             always_run: true
             verbose: true
+          - id: pyright
+            name: pyright (static type checking)
+            entry: poetry run pyright
+            language: system
+            pass_filenames: false
+            always_run: true
+            verbose: true
