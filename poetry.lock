@@ -1583,4 +1583,4 @@ gui = ["gooey"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4.0"
-content-hash = "d5510b025df3454d7f7ca5b912b9093f4fa561443b3da83d5ecf61baef1806d2"
+content-hash = "fd26520eb3f88f0fe0e0cb73a97b06128774f4932b05ef2091f8211776f5d7c2"

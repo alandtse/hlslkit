@@ -37,3 +37,10 @@ repos:
             pass_filenames: false
             always_run: true
             verbose: true
+          - id: mkdocs-build
+            name: mkdocs (documentation build validation)
+            entry: poetry run mkdocs build --strict
+            language: system
+            pass_filenames: false
+            files: ^(docs/.*|mkdocs\.yml|README\.md)$
+            verbose: true
