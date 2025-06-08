@@ -1486,8 +1486,8 @@ def strip_array_notation(name: str) -> str:
     return re.sub(r"\[.*?\]$", "", name)
 
 
-def bold_if(condition: bool, value: str) -> str:
-    return f"**{value}**" if condition and value else value
+def emphasize_if(condition: bool, value: str) -> str:
+    return f"<ins>**_{value}_**</ins>" if condition and value else value
 
 
 def compute_name_similarity(hlsl_field_name: str, cpp_field_name: str) -> float:
@@ -1638,22 +1638,24 @@ def generate_comparison_table(
                     cpp_field_name = cpp_field["name"] if cpp_field else ""
                     cpp_field_type = cpp_field["type"] if cpp_field else ""
 
-                    # Compute similarities and apply bolding
+                    # Compute similarities and apply emphasis
                     if hlsl_field and cpp_field:
-                        name_sim = compute_name_similarity(hlsl_field_name, cpp_field_name)
                         type_sim = jellyfish.jaro_winkler_similarity(hlsl_field_type, cpp_field_type)
+                        # For emphasis, use exact string comparison to catch array notation differences
+                        exact_name_match = hlsl_field_name == cpp_field_name
 
-                    # Apply bolding using helper
+                    # Apply emphasis using helper
                     if not hlsl_field or not cpp_field:
-                        hlsl_field_type = bold_if(True, hlsl_field_type)
-                        hlsl_field_name = bold_if(True, hlsl_field_name)
-                        cpp_field_type = bold_if(True, cpp_field_type)
-                        cpp_field_name = bold_if(True, cpp_field_name)
+                        hlsl_field_type = emphasize_if(True, hlsl_field_type)
+                        hlsl_field_name = emphasize_if(True, hlsl_field_name)
+                        cpp_field_type = emphasize_if(True, cpp_field_type)
+                        cpp_field_name = emphasize_if(True, cpp_field_name)
                     else:
-                        hlsl_field_name = bold_if(name_sim < 1, hlsl_field_name)
-                        cpp_field_name = bold_if(name_sim < 1, cpp_field_name)
-                        hlsl_field_type = bold_if(type_sim < 1, hlsl_field_type)
-                        cpp_field_type = bold_if(type_sim < 1, cpp_field_type)
+                        # Use exact match for emphasis to catch array notation differences
+                        hlsl_field_name = emphasize_if(not exact_name_match, hlsl_field_name)
+                        cpp_field_name = emphasize_if(not exact_name_match, cpp_field_name)
+                        hlsl_field_type = emphasize_if(type_sim < 1, hlsl_field_type)
+                        cpp_field_type = emphasize_if(type_sim < 1, cpp_field_type)
 
                     field_rows.append({
                         "HLSL Type": hlsl_field_type,
