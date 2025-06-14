@@ -1,0 +1,73 @@
+name: "Buffer Scan"
+description: "Scan HLSL buffers and update wiki documentation. Requires hlslkit to be installed (use setup-hlslkit action first)."
+
+inputs:
+    shader-directory:
+        description: "Directory containing HLSL shader files"
+        required: false
+        default: "."
+    output-file:
+        description: "Output file for buffer scan results"
+        required: false
+        default: "buffer-scan-results.md"
+    wiki-update:
+        description: "Whether to update the wiki with results"
+        required: false
+        default: "false"
+    github-token:
+        description: "GitHub token for wiki updates"
+        required: false
+    wiki-repo:
+        description: "Wiki repository (format: owner/repo)"
+        required: false
+        default: "doodlum/skyrim-community-shaders"
+    wiki-page:
+        description: "Wiki page to update"
+        required: false
+        default: "Buffers.md"
+
+runs:
+    using: "composite"
+    steps:
+        - name: Run buffer scan
+          shell: bash
+          working-directory: ${{ inputs.shader-directory }}
+          run: |
+              poetry run hlslkit-buffer-scan > "${{ inputs.output-file }}"
+
+        - name: Upload buffer scan results
+          uses: actions/upload-artifact@v4
+          with:
+              name: buffer-scan-results-${{ github.run_id }}
+              path: ${{ inputs.shader-directory }}/${{ inputs.output-file }}
+              retention-days: 30
+
+        - name: Update wiki (if enabled)
+          if: ${{ inputs.wiki-update == 'true' && inputs.github-token != '' }}
+          shell: bash
+          env:
+              GITHUB_TOKEN: ${{ inputs.github-token }}
+          run: |
+              # Use established patterns for wiki updates
+              echo "Updating wiki at https://github.com/${{ inputs.wiki-repo }}.wiki.git"
+
+              # Configure git with established bot identity
+              git config --global user.name "github-actions[bot]"
+              git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+              # Clone wiki repository
+              git clone "https://x-access-token:${{ inputs.github-token }}@github.com/${{ inputs.wiki-repo }}.wiki.git" wiki-repo
+              cd wiki-repo
+
+              # Update wiki page with scan results
+              cp "${{ inputs.shader-directory }}/${{ inputs.output-file }}" "${{ inputs.wiki-page }}"
+
+              # Commit and push changes if there are any
+              if git diff --quiet; then
+                echo "No changes to wiki page"
+              else
+                git add "${{ inputs.wiki-page }}"
+                git commit -m "Update buffer scan results - $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+                git push
+                echo "✅ Wiki updated successfully"
+              fi

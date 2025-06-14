@@ -24,6 +24,11 @@ gooey = { version = "^1.0.8.1", optional = true }
 [tool.poetry.extras]
 gui = ["gooey"]
 
+[tool.poetry.scripts]
+hlslkit-compile = "hlslkit.compile_shaders:main"
+hlslkit-generate = "hlslkit.generate_shader_defines:main"
+hlslkit-buffer-scan = "hlslkit.buffer_scan:main"
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.0"
 pytest-cov = "^4.0.0"
