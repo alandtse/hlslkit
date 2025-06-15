@@ -2,7 +2,7 @@
 
 This script compiles HLSL shaders specified in a YAML configuration file using Microsoft's `fxc.exe` compiler.
 It supports parallel compilation, system-adaptive job management, and detailed logging of warnings and errors.
-The output includes compiled shader objects and a `new_warnings.log` file summarizing new issues.
+The output includes compiled shader objects and a `new_issues.log` file summarizing new warnings and errors.
 
 Example:
     ```bash
@@ -530,12 +530,16 @@ def process_single_warning(
                 "message": warning_msg,
                 "example": warning_str,
                 "entries": [],
-                "instances": [],
+                "instances": {},  # Changed to dict to match YAML format
             }
         if shader_key not in new_warnings_dict[warning_id]["entries"]:
             new_warnings_dict[warning_id]["entries"].append(shader_key)
+
+        # Add to instances dict with location as key (matching YAML format)
         if location_lower not in new_warnings_dict[warning_id]["instances"]:
-            new_warnings_dict[warning_id]["instances"].append(location_lower)
+            new_warnings_dict[warning_id]["instances"][location_lower] = {"entries": []}
+        if shader_key not in new_warnings_dict[warning_id]["instances"][location_lower]["entries"]:
+            new_warnings_dict[warning_id]["instances"][location_lower]["entries"].append(shader_key)
 
     return all_warnings, new_warnings_dict, suppressed_warnings_count
 
@@ -615,48 +619,155 @@ def process_warnings_and_errors(
     )
 
 
-def log_new_warnings(new_warnings: list[dict], results: list[dict], output_dir: str, defines_lookup: dict) -> None:
-    """Log new warnings to a file.
+def log_new_issues(
+    new_warnings: list[dict], errors: dict, results: list[dict], output_dir: str, defines_lookup: dict
+) -> None:
+    """Log new warnings and errors to a unified file.
 
     Args:
         new_warnings (list[dict]): List of new warnings.
+        errors (dict): Dictionary of compilation errors.
         results (list[dict]): Compilation results.
         output_dir (str): Directory to save the log file.
         defines_lookup (dict): Lookup table for shader defines.
     """
-    warning_logger = logging.getLogger("new_warnings")
-    warning_logger.setLevel(logging.INFO)
-    warning_handler = logging.FileHandler(os.path.join(output_dir, "new_warnings.log"), mode="w", encoding="utf-8")
-    warning_handler.setFormatter(logging.Formatter("%(message)s"))
-    warning_logger.addHandler(warning_handler)
-    warning_logger.propagate = False
 
-    for warning in new_warnings:
-        for result in results:
-            shader_key = f"{os.path.basename(result['file'])}:{result['entry']}"
-            if shader_key in warning["entries"]:
-                config_key = shader_key.lower()
-                shader_type, defines = defines_lookup.get(config_key, ("Unknown", ["Unknown"]))
-                log_snippet = result["log"][:200].replace("\n", " ") if result["log"] else "N/A"
-                cmd_str = " ".join(result.get("cmd", ["N/A"]))
-                warning_logger.info(
-                    f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-                    f"Shader File: {os.path.basename(result['file'])}\n"
-                    f"Entry Point: {result['entry']}\n"
-                    f"Shader Type: {shader_type}\n"
-                    f"Defines: {defines}\n"
-                    f"Warning Code: {warning['code']}\n"
-                    f"Warning Message: {warning['message']}\n"
-                    f"Location: {warning['location']}\n"
-                    f"Instances: {len(warning['instances'])}\n"
-                    f"Affected Variants: {len(warning['entries'])}\n"
-                    f"Compilation Log: {log_snippet}\n"
-                    f"Command: {cmd_str}\n"
-                    f"---"
-                )
+    issue_logger = logging.getLogger("new_issues")
+    issue_logger.setLevel(logging.INFO)
+    issue_handler = logging.FileHandler(os.path.join(output_dir, "new_issues.log"), mode="w", encoding="utf-8")
+    issue_handler.setFormatter(logging.Formatter("%(message)s"))
+    issue_logger.addHandler(issue_handler)
+    issue_logger.propagate = False
 
-    warning_handler.close()
-    warning_logger.removeHandler(warning_handler)
+    # Calculate totals
+    total_warnings = sum(get_instance_count(w) for w in new_warnings)
+    total_warning_entries = sum(
+        sum(len(loc_data["entries"]) for loc_data in w["instances"].values()) for w in new_warnings
+    )
+    total_errors = sum(len(e) for e in errors.values())
+
+    # Header with summary
+    issue_logger.info("=" * 80)
+    issue_logger.info("NEW SHADER COMPILATION ISSUES DETECTED")
+    issue_logger.info("=" * 80)
+    issue_logger.info(f"Report generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    issue_logger.info(
+        f"New warnings: {len(new_warnings)} types, {total_warnings} instances, {total_warning_entries} shader combinations"
+    )
+    issue_logger.info(f"Compilation errors: {total_errors} total errors")
+    issue_logger.info("=" * 80)
+    issue_logger.info("")
+
+    # Log compilation errors first (they're more critical)
+    if errors:
+        issue_logger.info("COMPILATION ERRORS")
+        issue_logger.info("=" * 60)
+        issue_logger.info("")
+
+        for shader_key, error_msgs in errors.items():
+            shader_file = shader_key.split(":")[0]
+            entry_point = ":".join(shader_key.split(":")[1:]) if ":" in shader_key else "unknown"
+
+            issue_logger.info(f"ERROR in {shader_file} (entry: {entry_point}):")
+            issue_logger.info("-" * 40)
+
+            for error_msg in error_msgs:
+                # Parse error message to extract location and details
+                if "(" in error_msg and ")" in error_msg:
+                    # Extract location info from parentheses
+                    location_start = error_msg.find("(") + 1
+                    location_end = error_msg.find(")", location_start)
+                    location = error_msg[location_start:location_end]
+
+                    # Extract error code and message
+                    parts = error_msg.split(":", 2)
+                    if len(parts) >= 2:
+                        error_code = parts[0].strip()
+                        remaining = parts[1].strip()
+
+                        issue_logger.info(f"  Error Code: {error_code}")
+                        issue_logger.info(f"  Message: {remaining}")
+                        if location and location != "unknown":
+                            issue_logger.info(f"  Location: {location}")
+                    else:
+                        issue_logger.info(f"  Full Error: {error_msg}")
+                else:
+                    issue_logger.info(f"  Full Error: {error_msg}")
+
+                # Find and include compiler output context
+                for result in results:
+                    result_key = f"{os.path.basename(result['file'])}:{result['entry']}"
+                    if result_key == shader_key and result.get("log"):
+                        log_lines = result["log"].splitlines()
+                        error_lines = [line for line in log_lines if "error" in line.lower()]
+                        if error_lines:
+                            issue_logger.info(f"  Compiler output: {error_lines[0]}")
+                        break
+
+                issue_logger.info("")
+
+            issue_logger.info("=" * 40)
+            issue_logger.info("")
+
+    # Log new warnings
+    if new_warnings:
+        issue_logger.info("NEW WARNINGS")
+        issue_logger.info("=" * 60)
+        issue_logger.info("")
+
+        # Sort warnings by total entry count (impact) - highest first
+        sorted_warnings = sorted(
+            new_warnings,
+            key=lambda w: sum(len(loc_data["entries"]) for loc_data in w["instances"].values()),
+            reverse=True,
+        )
+
+        for i, warning in enumerate(sorted_warnings, 1):
+            # Calculate total entries for this warning
+            warning_entry_count = sum(len(loc_data["entries"]) for loc_data in warning["instances"].values())
+
+            issue_logger.info(f"WARNING #{i}: {warning['code']} - {warning['message']}")
+            issue_logger.info(f"Affected shader combinations: {warning_entry_count}")
+            issue_logger.info("-" * 60)
+
+            # Show each location where this warning occurs
+            for location, location_data in warning["instances"].items():
+                entry_count = len(location_data["entries"])
+                issue_logger.info(f"Location: {location} ({entry_count} combinations)")
+
+                # Show the actual compilation output for this location
+                for result in results:
+                    shader_key = f"{os.path.basename(result['file'])}:{result['entry']}"
+                    if shader_key in location_data["entries"]:
+                        if result.get("log"):
+                            log_lines = result["log"].splitlines()
+                            warning_lines = [
+                                line for line in log_lines if warning["code"] in line and location.split(":")[0] in line
+                            ]
+                            if warning_lines:
+                                issue_logger.info(f"  Compiler output: {warning_lines[0]}")
+                        break
+
+                issue_logger.info("")
+
+            issue_logger.info("=" * 60)
+            issue_logger.info("")
+
+    # Summary section
+    issue_logger.info("SUMMARY")
+    issue_logger.info("=" * 60)
+    if total_errors > 0:
+        issue_logger.info(f"ACTION REQUIRED: Fix {total_errors} compilation errors before proceeding.")
+    if total_warnings > 0:
+        issue_logger.info(
+            f"RECOMMENDED: Address {total_warnings} new warnings across {total_warning_entries} shader combinations."
+        )
+    if total_errors == 0 and total_warnings == 0:
+        issue_logger.info("No new issues detected - compilation is clean!")
+    issue_logger.info("=" * 80)
+
+    issue_handler.close()
+    issue_logger.removeHandler(issue_handler)
 
 
 def parse_args_for_defaults() -> dict[str, Any]:
@@ -1226,37 +1337,104 @@ def analyze_and_report_results(
     new_warnings, all_warnings, errors, suppressed_warnings_count = process_warnings_and_errors(
         results, baseline_warnings, suppress_warnings, defines_lookup
     )
-    log_new_warnings(new_warnings, results, output_dir, defines_lookup)
+    log_new_issues(new_warnings, errors, results, output_dir, defines_lookup)
 
-    total_new_warnings = sum(len(w["instances"]) for w in new_warnings)
+    total_new_warnings = sum(get_instance_count(w) for w in new_warnings)
     logging.info(
         f"Compilation complete: {total_new_warnings} new warnings, {suppressed_warnings_count} suppressed warnings, {len(errors)} errors"
     )
-
     if new_warnings:
-        unique_warnings = sorted(new_warnings, key=lambda x: len(x["instances"]), reverse=True)
-        max_to_show = min(5, len(unique_warnings))
-        logging.warning(f"New warnings ({len(unique_warnings)} unique, {total_new_warnings} total):")
+        unique_warnings = sorted(new_warnings, key=lambda x: get_instance_count(x), reverse=True)
+        max_to_show = min(10, len(unique_warnings))  # Show more warnings for better visibility
+        logging.warning(f"*** NEW WARNINGS DETECTED ({len(unique_warnings)} unique, {total_new_warnings} total):")
         for i, warning in enumerate(unique_warnings[:max_to_show], 1):
-            count = len(warning["instances"])
+            count = get_instance_count(warning)
             affected_variants = len(warning["entries"])
             percentage = (count / total_new_warnings * 100) if total_new_warnings > 0 else 0
+
+            # Enhanced warning display with specific locations
+            logging.warning(f"\n{i}. {warning['code']}: {warning['message']}")
             logging.warning(
-                f"{i}. {warning['example']} ({count} occurrences, {affected_variants} variants affected, {percentage:.1f}%)"
-            )
+                f"   Impact: {count} occurrences across {affected_variants} shader variants ({percentage:.1f}%)"
+            )  # Show specific file locations and line numbers
+            locations_shown = 0
+            max_locations = 3  # Show up to 3 specific locations per warning
+
+            # Handle both list and dictionary formats for instances
+            if isinstance(warning["instances"], dict):
+                # Dictionary format: {"location": {"entries": [...]}}
+                for location, location_data in warning["instances"].items():
+                    if locations_shown >= max_locations:
+                        remaining_locations = len(warning["instances"]) - locations_shown
+                        logging.warning(
+                            f"   Location: ...and {remaining_locations} more locations (see new_issues.log)"
+                        )
+                        break
+
+                    # Parse file and line info for better display
+                    file_part = location.split(":")[0] if ":" in location else location
+                    line_part = ":".join(location.split(":")[1:]) if ":" in location else "unknown"
+
+                    # Show affected shader entries for this location
+                    entries_list = list(location_data["entries"])[:2]  # Show first 2 entries
+                    entries_str = ", ".join(entries_list)
+                    if len(location_data["entries"]) > 2:
+                        entries_str += f" (+{len(location_data['entries']) - 2} more)"
+
+                    logging.warning(f"   Location: {file_part}:{line_part} (entries: {entries_str})")
+                    locations_shown += 1
+            else:
+                # List format: ["location1", "location2", ...] (for backward compatibility)
+                for location in warning["instances"][:max_locations]:
+                    file_part = location.split(":")[0] if ":" in location else location
+                    line_part = ":".join(location.split(":")[1:]) if ":" in location else "unknown"
+                    logging.warning(f"   Location: {file_part}:{line_part}")
+                    locations_shown += 1
+
+                if len(warning["instances"]) > max_locations:
+                    remaining_locations = len(warning["instances"]) - max_locations
+                    logging.warning(f"   Location: ...and {remaining_locations} more locations (see new_issues.log)")
+
         if len(unique_warnings) > max_to_show:
-            remaining_count = sum(len(w["instances"]) for w in unique_warnings[max_to_show:])
+            remaining_count = sum(get_instance_count(w) for w in unique_warnings[max_to_show:])
             logging.warning(
-                f"...and {len(unique_warnings) - max_to_show} more unique warnings ({remaining_count} occurrences)"
+                f"\n...and {len(unique_warnings) - max_to_show} more unique warnings ({remaining_count} occurrences)"
             )
+            logging.warning("See 'new_issues.log' for complete details and compilation context")
 
     error_count = sum(len(e) for e in errors.values())
     if errors:
-        error_items = [f"{key}: {msg}" for key, msgs in errors.items() for msg in msgs]
-        max_to_show = min(5, len(error_items))
-        logging.error(f"Errors ({max_to_show} of {error_count}):\n" + "\n".join(error_items[:max_to_show]))
-        if error_count > max_to_show:
-            logging.error(f"...and {error_count - max_to_show} more errors")
+        logging.error(f"*** COMPILATION ERRORS DETECTED ({error_count} total errors):")
+
+        for shader_key, error_msgs in errors.items():
+            shader_file = shader_key.split(":")[0]
+            entry_point = ":".join(shader_key.split(":")[1:]) if ":" in shader_key else "unknown"
+
+            logging.error(f"\nFile: {shader_file} (entry: {entry_point}):")
+            for error_msg in error_msgs:
+                # Parse error message to extract location and details
+                if "(" in error_msg and ")" in error_msg:
+                    # Extract location info from parentheses
+                    location_start = error_msg.find("(") + 1
+                    location_end = error_msg.find(")", location_start)
+                    location = error_msg[location_start:location_end]
+
+                    # Extract error code and message
+                    parts = error_msg.split(":", 2)
+                    if len(parts) >= 2:
+                        error_code = parts[0].strip()
+                        remaining = parts[1].strip()
+
+                        logging.error(f"   ERROR {error_code}: {remaining}")
+                        if location and location != "unknown":
+                            logging.error(f"      Location: {location}")
+                    else:
+                        logging.error(f"   ERROR: {error_msg}")
+                else:
+                    logging.error(f"   ERROR: {error_msg}")
+
+        logging.error("\nACTION REQUIRED: Fix all compilation errors above before proceeding.")
+        logging.error("Check the full compilation log for additional context and details.")
         return 1, total_new_warnings, error_count  # Enhanced warning threshold logic to support negative values
     if max_warnings < 0:
         # Negative max_warnings means user must eliminate existing warnings
@@ -1270,22 +1448,73 @@ def analyze_and_report_results(
             eliminated_warnings = baseline_warning_count - (current_total_warnings - total_new_warnings)
             if target_warning_count == 0:
                 logging.error(
-                    f"Must eliminate all warnings: required reduction {required_reduction} exceeds "
+                    f"*** MUST ELIMINATE ALL WARNINGS: Required reduction {required_reduction} exceeds "
                     f"baseline count {baseline_warning_count}. Current total: {current_total_warnings}, "
                     f"target: {target_warning_count} warnings."
                 )
+                logging.error("ACTION REQUIRED: Eliminate ALL remaining warnings to pass this check.")
             else:
                 needed_elimination = required_reduction - eliminated_warnings
                 logging.error(
-                    f"Insufficient warning reduction: need to eliminate {required_reduction} warnings, "
+                    f"*** INSUFFICIENT WARNING REDUCTION: Need to eliminate {required_reduction} warnings, "
                     f"but only eliminated {eliminated_warnings}. Need {needed_elimination} more eliminations."
                 )
+                logging.error(f"ACTION REQUIRED: Eliminate {needed_elimination} more warnings to pass this check.")
+
+            # Provide actionable guidance
+            if new_warnings:
+                logging.error(
+                    f"TIP: Focus on eliminating existing warnings rather than adding {total_new_warnings} new ones."
+                )
+                logging.error("Check 'new_issues.log' for detailed locations and suggested fixes.")
+            else:
+                logging.error("TIP: Eliminate more existing baseline warnings to meet the reduction requirement.")
+
             logging.info(
-                f"Baseline warnings: {baseline_warning_count}, "
-                f"New warnings: {total_new_warnings}, "
-                f"Target: ≤{target_warning_count} total warnings"
+                f"SUMMARY: Baseline: {baseline_warning_count} | New: {total_new_warnings} | "
+                f"Target: ≤{target_warning_count} | Current: {current_total_warnings}"
             )
+            # Show top existing warnings to help user prioritize elimination efforts
+            if baseline_warnings:
+                logging.error("\n*** TOP EXISTING WARNINGS TO ELIMINATE (by impact):")
+
+                # Calculate entry counts for baseline warnings and sort by impact
+                baseline_with_counts = []
+                for _warning_key, warning_data in baseline_warnings.items():
+                    total_entries = sum(
+                        len(location_data.get("entries", [])) for location_data in warning_data["instances"].values()
+                    )
+                    baseline_with_counts.append({
+                        "code": warning_data.get("code", "Unknown"),
+                        "message": warning_data.get("message", "Unknown message"),
+                        "total_entries": total_entries,
+                        "instance_count": len(warning_data["instances"]),
+                        "locations": list(warning_data["instances"].keys())[:3],  # Show first 3 locations
+                    })
+
+                # Sort by total entries (impact) descending
+                top_existing = sorted(baseline_with_counts, key=lambda x: x["total_entries"], reverse=True)[:5]
+
+                # Calculate total entries across all baseline warnings for percentage calculation
+                total_baseline_entries = sum(w["total_entries"] for w in baseline_with_counts)
+
+                for i, warning in enumerate(top_existing, 1):
+                    impact_percentage = (
+                        (warning["total_entries"] / total_baseline_entries * 100) if total_baseline_entries > 0 else 0
+                    )
+                    logging.error(f"\n{i}. {warning['code']}: {warning['message']}")
+                    logging.error(
+                        f"   Impact: {warning['total_entries']} shader combinations across {warning['instance_count']} locations ({impact_percentage:.1f}% of baseline)"
+                    )
+                    logging.error(f"   Sample locations: {', '.join(warning['locations'])}")
+
+                logging.error(
+                    f"\nEliminating these top {len(top_existing)} warning types would reduce {sum(w['total_entries'] for w in top_existing)} shader combinations."
+                )
+                logging.error("Focus on the highest impact warnings first for maximum progress toward the target.")
+
             return 1, total_new_warnings, error_count
+
         else:
             eliminated_warnings = baseline_warning_count - (current_total_warnings - total_new_warnings)
             if target_warning_count == 0:
@@ -1293,6 +1522,7 @@ def analyze_and_report_results(
                     f"All warnings eliminated: required reduction {required_reduction} exceeded "
                     f"baseline count {baseline_warning_count}. Achieved zero warnings goal."
                 )
+
             else:
                 logging.info(
                     f"Warning reduction goal met: eliminated {eliminated_warnings} warnings "
@@ -1300,10 +1530,31 @@ def analyze_and_report_results(
                 )
     elif total_new_warnings > max_warnings:
         # Positive max_warnings means limit on new warnings (original behavior)
-        logging.error(f"Too many new warnings ({total_new_warnings} > {max_warnings})")
+        excess_warnings = total_new_warnings - max_warnings
+        logging.error(f"*** TOO MANY NEW WARNINGS: {total_new_warnings} new warnings exceed limit of {max_warnings}")
+        logging.error(f"ACTION REQUIRED: Eliminate {excess_warnings} new warnings to pass this check.")
+
+        if new_warnings:
+            logging.error("Check 'new_issues.log' for detailed locations and suggested fixes.")
+            # Show the most common warnings first for prioritization
+            unique_warnings = sorted(new_warnings, key=lambda x: len(x["instances"]), reverse=True)
+            logging.error(f"TIP: Focus on the top {min(3, len(unique_warnings))} most frequent warning types:")
+            for i, warning in enumerate(unique_warnings[:3], 1):
+                count = len(warning["instances"])
+                logging.error(f"   {i}. {warning['code']}: {warning['message']} ({count} occurrences)")
+
         return 1, total_new_warnings, error_count
 
     return 0, total_new_warnings, error_count
+
+
+def get_instance_count(warning: dict) -> int:
+    """Get the count of instances, handling both list and dict formats."""
+    instances = warning.get("instances", [])
+    if isinstance(instances, dict):
+        return len(instances)
+    else:
+        return len(instances)
 
 
 def main() -> int:
