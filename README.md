@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/alandtse/hlslkit)](https://img.shields.io/github/v/release/alandtse/hlslkit)
 [![Build status](https://img.shields.io/github/actions/workflow/status/alandtse/hlslkit/main.yml?branch=main)](https://github.com/alandtse/hlslkit/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/alandtse/hlslkit/branch/main/graph/badge.svg)](https://codecov.io/gh/alandtse/hlslkit)
+[![codecov](https://codecov.io/gh/alandtse/hlslkit/graph/badge.svg?token=PSM93RVX67)](https://codecov.io/gh/alandtse/hlslkit)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/alandtse/hlslkit)](https://img.shields.io/github/commit-activity/m/alandtse/hlslkit)
 [![License](https://img.shields.io/github/license/alandtse/hlslkit)](https://img.shields.io/github/license/alandtse/hlslkit)
 
