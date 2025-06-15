@@ -39,6 +39,8 @@ Key features:
 
 ## Installation
 
+### Local Development
+
 1. Clone the repository:
 
     ```bash
@@ -265,6 +267,48 @@ make build
 -   **Publishing**: Configure PyPI/Artifactory per [cookiecutter-poetry](https://fpgmaas.github.io/cookiecutter-poetry/features/publishing/#set-up-for-pypi).
 -   **Documentation**: Enable MkDocs per [cookiecutter-poetry](https://fpgmaas.github.io/cookiecutter-poetry/features/mkdocs/#enabling-the-documentation-on-github).
 -   **Codecov**: Enable coverage reports per [cookiecutter-poetry](https://fpgmaas.github.io/cookiecutter-poetry/features/codecov/).
+
+## CI/CD Integration
+
+### GitHub Actions
+
+For CI/CD pipelines using a Windows runner (e.g., [windows-latest](https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Readme.md)), you can install hlslkit directly from GitHub using pip:
+
+```yaml
+- name: Setup Python
+  uses: actions/setup-python@v5
+  with:
+      python-version: "3.11"
+
+- name: Install hlslkit
+  run: pip install git+https://github.com/alandtse/hlslkit.git
+  shell: bash
+
+- name: Validate shader compilation
+  run: hlslkit-compile --shader-dir build/Shaders --output-dir build/ShaderCache --config shader_defines.yaml --max-warnings 0
+  shell: bash
+
+- name: Run buffer scan
+  run: hlslkit-buffer-scan > buffer-scan-results.md
+  shell: bash
+```
+
+### PyPI Installation
+
+Once published to PyPI, you can install hlslkit using:
+
+```bash
+pip install hlslkit
+```
+
+### Docker
+
+You can also use the included Dockerfile for containerized builds:
+
+```bash
+docker build -t hlslkit:latest .
+docker run --rm -v $(pwd):/workspace -w /workspace hlslkit:latest hlslkit-compile --help
+```
 
 ## Limitations
 
