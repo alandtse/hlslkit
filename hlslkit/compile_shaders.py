@@ -740,18 +740,19 @@ def get_system_adaptive_jobs(
         tuple[int, str]: Number of jobs and reason for selection.
     """
     if is_ci:
-        jobs = min(max(cpu_count // 2, 2), 4)
-        reason = "auto-detected for CI environment"
+        # In CI environments, be more aggressive with job allocation since runners are dedicated
+        jobs = min(max(cpu_count - 1, 2), 4)
+        reason = "auto-detected for CI environment (aggressive)"
         if HAS_PSUTIL:
             try:
                 cpu_usage = psutil.cpu_percent(interval=0.5)
                 mem_usage = psutil.virtual_memory().percent
-                if cpu_usage < 70 and mem_usage < 90:
-                    jobs = min(max(cpu_count - 1, 2), physical_cores or 4)
-                    reason = f"auto-detected for CI, low CPU ({cpu_usage:.1f}%), low memory ({mem_usage:.1f}%)"
-                elif cpu_usage > 90 or mem_usage > 95:
-                    jobs = 2
-                    reason = f"auto-detected for CI, high CPU ({cpu_usage:.1f}%) or memory ({mem_usage:.1f}%)"
+                if cpu_usage > 90 or mem_usage > 95:
+                    jobs = min(max(cpu_count // 2, 2), 4)
+                    reason = (
+                        f"auto-detected for CI, high CPU ({cpu_usage:.1f}%) or memory ({mem_usage:.1f}%) - conservative"
+                    )
+                # For low load, keep the aggressive setting
             except Exception as e:
                 logging.debug(f"Failed to check system usage in CI: {e}")
         return jobs, reason
