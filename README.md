@@ -127,7 +127,12 @@ python compile_shaders.py --shader-dir build\ALL-WITH-AUTO-DEPLOYMENT\aio\Shader
 -   `--output-dir`: Output directory for compiled shaders (default: `build/ShaderCache`).
 -   `--config`: Path to `shader_defines.yaml` (default: `shader_defines.yaml`).
 -   `--jobs`: Number of parallel jobs (default: dynamic based on CPU).
--   `--max-warnings`: Maximum allowed new warnings (default: 0).
+-   `--max-warnings`: Maximum allowed warnings:
+
+    -   **Positive values** (e.g., `5`): Maximum number of NEW warnings allowed.
+    -   **Negative values** (e.g., `-3`): Must eliminate this many existing baseline warnings up to complete elimination of all warnings.
+    -   **Zero** (`0`): No new warnings allowed (default).
+
 -   `--suppress-warnings`: Comma-separated warning codes to suppress (e.g., `X1519,X3206`).
 -   `--fxc`: Path to `fxc.exe` (optional if in PATH).
 -   `--strip-debug-defines`: Remove debug defines (e.g., `D3DCOMPILE_DEBUG`).
@@ -137,6 +142,42 @@ python compile_shaders.py --shader-dir build\ALL-WITH-AUTO-DEPLOYMENT\aio\Shader
 -   `-g/--gui`: Run with GUI (requires `gooey`).
 
 **Note**: Validate `shader_defines.yaml` syntax, as malformed YAML raises uncaught errors.
+
+##### Advanced Warning Control
+
+The `--max-warnings` parameter supports sophisticated warning management for CI/CD environments:
+
+**Positive Values (Standard Limits)**:
+
+```bash
+# Allow up to 5 new warnings
+python compile_shaders.py --max-warnings 5 [other options...]
+```
+
+**Negative Values (Warning Reduction Requirements)**:
+
+```bash
+# Require elimination of 3 existing baseline warnings
+python compile_shaders.py --max-warnings -3 [other options...]
+
+# Require elimination of 10 warnings (if baseline has fewer, target becomes zero warnings)
+python compile_shaders.py --max-warnings -10 [other options...]
+```
+
+**How it works**:
+
+-   **Baseline warnings**: Stored in `shader_defines.yaml` from previous compilations
+-   **New warnings**: Detected by comparing current compilation against baseline
+-   **Negative values**: Calculate target warning count as `baseline_count - abs(max_warnings)`
+-   **Zero targeting**: If required reduction exceeds baseline count, target becomes 0 warnings
+
+**Example scenarios**:
+
+-   10 baseline warnings, `--max-warnings -3` → Target: 7 total warnings (must eliminate 3)
+-   5 baseline warnings, `--max-warnings -10` → Target: 0 total warnings (must eliminate all)
+-   0 baseline warnings, `--max-warnings -5` → Target: 0 total warnings (already achieved)
+
+This enables progressive warning cleanup in CI environments where teams can set requirements like "each PR must eliminate at least 2 warnings" while still allowing some new warnings if the overall count decreases.
 
 #### 3. Scan Buffer Usage
 

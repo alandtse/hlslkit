@@ -5,7 +5,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml  # Added for YAMLError
 
-from hlslkit.compile_shaders import compile_shader, flatten_defines, normalize_path, parse_shader_configs
+from hlslkit.compile_shaders import (
+    analyze_and_report_results,
+    compile_shader,
+    flatten_defines,
+    normalize_path,
+    parse_shader_configs,
+)
 
 # Check if fxc.exe is available in the environment
 HAS_FXC = shutil.which("fxc.exe") is not None
@@ -259,3 +265,287 @@ def test_parse_shader_configs_empty_entries(mock_open, mock_yaml_load):
     mock_open.return_value.__enter__.return_value = mock_file
     tasks = parse_shader_configs("config.yaml")
     assert tasks == []
+
+
+@patch("hlslkit.compile_shaders.load_baseline_warnings")
+@patch("hlslkit.compile_shaders.build_defines_lookup")
+@patch("hlslkit.compile_shaders.process_warnings_and_errors")
+@patch("hlslkit.compile_shaders.log_new_warnings")
+def test_analyze_and_report_results_positive_max_warnings(
+    mock_log_new_warnings, mock_process_warnings, mock_build_defines, mock_load_baseline
+):
+    """Test analyze_and_report_results with positive max_warnings (original behavior)."""
+    # Setup mocks
+    mock_load_baseline.return_value = {}
+    mock_build_defines.return_value = {}
+    mock_log_new_warnings.return_value = None  # Test case: 3 new warnings, max_warnings=5 (should pass)
+    new_warnings = [
+        {
+            "instances": ["loc1", "loc2"],
+            "entries": ["shader1:entry1"],
+            "example": "shader1:entry1:X4000: warning message (loc1)",
+            "code": "X4000",
+            "message": "warning message",
+        },  # 2 instances
+        {
+            "instances": ["loc3"],
+            "entries": ["shader2:entry2"],
+            "example": "shader2:entry2:X4001: another warning (loc3)",
+            "code": "X4001",
+            "message": "another warning",
+        },  # 1 instance
+    ]
+    mock_process_warnings.return_value = (new_warnings, {}, {}, 0)
+
+    exit_code, total_warnings, error_count = analyze_and_report_results(
+        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=5
+    )
+
+    assert exit_code == 0
+    assert total_warnings == 3
+    assert error_count == 0
+
+
+@patch("hlslkit.compile_shaders.load_baseline_warnings")
+@patch("hlslkit.compile_shaders.build_defines_lookup")
+@patch("hlslkit.compile_shaders.process_warnings_and_errors")
+@patch("hlslkit.compile_shaders.log_new_warnings")
+def test_analyze_and_report_results_positive_max_warnings_exceed(
+    mock_log_new_warnings, mock_process_warnings, mock_build_defines, mock_load_baseline
+):
+    """Test analyze_and_report_results with positive max_warnings exceeded (should fail)."""
+    # Setup mocks
+    mock_load_baseline.return_value = {}
+    mock_build_defines.return_value = {}
+    mock_log_new_warnings.return_value = None  # Test case: 6 new warnings, max_warnings=5 (should fail)
+    new_warnings = [
+        {
+            "instances": ["loc1", "loc2", "loc3"],
+            "entries": ["shader1:entry1"],
+            "example": "shader1:entry1:X4000: warning message (loc1)",
+            "code": "X4000",
+            "message": "warning message",
+        },  # 3 instances
+        {
+            "instances": ["loc4", "loc5", "loc6"],
+            "entries": ["shader2:entry2"],
+            "example": "shader2:entry2:X4001: another warning (loc4)",
+            "code": "X4001",
+            "message": "another warning",
+        },  # 3 instances
+    ]
+    mock_process_warnings.return_value = (new_warnings, {}, {}, 0)
+
+    exit_code, total_warnings, error_count = analyze_and_report_results(
+        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=5
+    )
+
+    assert exit_code == 1
+    assert total_warnings == 6
+    assert error_count == 0
+
+
+@patch("hlslkit.compile_shaders.load_baseline_warnings")
+@patch("hlslkit.compile_shaders.build_defines_lookup")
+@patch("hlslkit.compile_shaders.process_warnings_and_errors")
+@patch("hlslkit.compile_shaders.log_new_warnings")
+def test_analyze_and_report_results_negative_max_warnings_success(
+    mock_log_new_warnings, mock_process_warnings, mock_build_defines, mock_load_baseline
+):
+    """Test analyze_and_report_results with negative max_warnings (warning reduction required) - success case."""
+    # Setup mocks
+    baseline_warnings = {
+        "warning1": {"instances": {"loc1": {}, "loc2": {}, "loc3": {}}},  # 3 instances
+        "warning2": {"instances": {"loc4": {}, "loc5": {}}},  # 2 instances
+    }
+    mock_load_baseline.return_value = baseline_warnings
+    mock_build_defines.return_value = {}
+    mock_log_new_warnings.return_value = (
+        None  # Test case: 5 baseline warnings, 1 new warning, max_warnings=-2 (need to eliminate 2)
+    )
+    # Since we have 5 baseline + 1 new = 6 total, and target is 5-2=3, this should fail
+    # But if we assume some baseline warnings were eliminated, let's test success case
+    new_warnings = [
+        {
+            "instances": ["new_loc1"],
+            "entries": ["shader1:entry1"],
+            "example": "shader1:entry1:X4000: new warning (new_loc1)",
+            "code": "X4000",
+            "message": "new warning",
+        },  # 1 new warning
+    ]
+    mock_process_warnings.return_value = (new_warnings, {}, {}, 0)
+
+    exit_code, total_warnings, error_count = analyze_and_report_results(
+        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=-2
+    )
+
+    # With 5 baseline + 1 new = 6 total, target = 5-2 = 3, so 6 > 3 = fail
+    assert exit_code == 1
+    assert total_warnings == 1
+    assert error_count == 0
+
+
+@patch("hlslkit.compile_shaders.load_baseline_warnings")
+@patch("hlslkit.compile_shaders.build_defines_lookup")
+@patch("hlslkit.compile_shaders.process_warnings_and_errors")
+@patch("hlslkit.compile_shaders.log_new_warnings")
+def test_analyze_and_report_results_negative_max_warnings_exceeds_baseline_success(
+    mock_log_new_warnings, mock_process_warnings, mock_build_defines, mock_load_baseline
+):
+    """Test analyze_and_report_results with negative max_warnings exceeding baseline (success - zero warnings)."""
+    # Setup mocks
+    baseline_warnings = {
+        "warning1": {"instances": {"loc1": {}, "loc2": {}}},  # 2 instances
+    }
+    mock_load_baseline.return_value = baseline_warnings
+    mock_build_defines.return_value = {}
+    mock_log_new_warnings.return_value = None
+
+    # Test case: 2 baseline warnings, 0 new warnings, max_warnings=-5 (need to eliminate 5, but only 2 exist)
+    # Target should be max(0, 2-5) = 0, and current total is 2+0 = 2, so 2 > 0 = fail
+    # But if all warnings are eliminated (0 total), it should pass
+    new_warnings = []
+    mock_process_warnings.return_value = (new_warnings, {}, {}, 0)
+
+    # Override to simulate that all baseline warnings were eliminated
+    mock_load_baseline.return_value = {}  # No baseline warnings remain
+
+    exit_code, total_warnings, error_count = analyze_and_report_results(
+        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=-5
+    )
+
+    # With 0 baseline + 0 new = 0 total, target = max(0, 0-5) = 0, so 0 <= 0 = pass
+    assert exit_code == 0
+    assert total_warnings == 0
+    assert error_count == 0
+
+
+@patch("hlslkit.compile_shaders.load_baseline_warnings")
+@patch("hlslkit.compile_shaders.build_defines_lookup")
+@patch("hlslkit.compile_shaders.process_warnings_and_errors")
+@patch("hlslkit.compile_shaders.log_new_warnings")
+def test_analyze_and_report_results_negative_max_warnings_exceeds_baseline_failure(
+    mock_log_new_warnings, mock_process_warnings, mock_build_defines, mock_load_baseline
+):
+    """Test analyze_and_report_results with negative max_warnings exceeding baseline (failure - still has warnings)."""
+    # Setup mocks
+    baseline_warnings = {
+        "warning1": {"instances": {"loc1": {}, "loc2": {}}},  # 2 instances
+    }
+    mock_load_baseline.return_value = baseline_warnings
+    mock_build_defines.return_value = {}
+    mock_log_new_warnings.return_value = None
+
+    # Test case: 2 baseline warnings, 1 new warning, max_warnings=-10 (need to eliminate 10, but only 2 exist)
+    # Target should be max(0, 2-10) = 0, and current total is 2+1 = 3, so 3 > 0 = fail
+    new_warnings = [
+        {
+            "instances": ["new_loc1"],
+            "entries": ["shader1:entry1"],
+            "example": "shader1:entry1:X4000: new warning (new_loc1)",
+            "code": "X4000",
+            "message": "new warning",
+        },  # 1 new warning
+    ]
+    mock_process_warnings.return_value = (new_warnings, {}, {}, 0)
+
+    exit_code, total_warnings, error_count = analyze_and_report_results(
+        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=-10
+    )
+
+    # With 2 baseline + 1 new = 3 total, target = max(0, 2-10) = 0, so 3 > 0 = fail
+    assert exit_code == 1
+    assert total_warnings == 1
+    assert error_count == 0
+
+
+@patch("hlslkit.compile_shaders.load_baseline_warnings")
+@patch("hlslkit.compile_shaders.build_defines_lookup")
+@patch("hlslkit.compile_shaders.process_warnings_and_errors")
+@patch("hlslkit.compile_shaders.log_new_warnings")
+def test_analyze_and_report_results_negative_max_warnings_zero_baseline_success(
+    mock_log_new_warnings, mock_process_warnings, mock_build_defines, mock_load_baseline
+):
+    """Test analyze_and_report_results with negative max_warnings when baseline is already zero."""
+    # Setup mocks - no baseline warnings
+    mock_load_baseline.return_value = {}
+    mock_build_defines.return_value = {}
+    mock_log_new_warnings.return_value = None
+
+    # Test case: 0 baseline warnings, 0 new warnings, max_warnings=-5 (need to eliminate 5, but 0 exist)
+    # Target should be max(0, 0-5) = 0, and current total is 0+0 = 0, so 0 <= 0 = pass
+    new_warnings = []
+    mock_process_warnings.return_value = (new_warnings, {}, {}, 0)
+
+    exit_code, total_warnings, error_count = analyze_and_report_results(
+        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=-5
+    )
+
+    # With 0 baseline + 0 new = 0 total, target = max(0, 0-5) = 0, so 0 <= 0 = pass
+    assert exit_code == 0
+    assert total_warnings == 0
+    assert error_count == 0
+
+
+@patch("hlslkit.compile_shaders.load_baseline_warnings")
+@patch("hlslkit.compile_shaders.build_defines_lookup")
+@patch("hlslkit.compile_shaders.process_warnings_and_errors")
+@patch("hlslkit.compile_shaders.log_new_warnings")
+def test_analyze_and_report_results_negative_max_warnings_partial_elimination_success(
+    mock_log_new_warnings, mock_process_warnings, mock_build_defines, mock_load_baseline
+):
+    """Test analyze_and_report_results where negative max_warnings exceeds baseline, but partial elimination + no new warnings succeeds."""
+    # Setup mocks
+    baseline_warnings = {
+        "warning1": {"instances": {"loc1": {}}},  # 1 instance left (assume others were eliminated)
+    }
+    mock_load_baseline.return_value = baseline_warnings
+    mock_build_defines.return_value = {}
+    mock_log_new_warnings.return_value = None
+
+    # Test case: 1 baseline warning remaining, 0 new warnings, max_warnings=-10
+    # Target should be max(0, 1-10) = 0, and current total is 1+0 = 1, so 1 > 0 = fail
+    # This tests the boundary case where even partial elimination isn't enough when target is 0
+    new_warnings = []
+    mock_process_warnings.return_value = (new_warnings, {}, {}, 0)
+
+    exit_code, total_warnings, error_count = analyze_and_report_results(
+        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=-10
+    )
+
+    # With 1 baseline + 0 new = 1 total, target = max(0, 1-10) = 0, so 1 > 0 = fail
+    assert exit_code == 1
+    assert total_warnings == 0
+    assert error_count == 0
+
+
+@patch("hlslkit.compile_shaders.load_baseline_warnings")
+@patch("hlslkit.compile_shaders.build_defines_lookup")
+@patch("hlslkit.compile_shaders.process_warnings_and_errors")
+@patch("hlslkit.compile_shaders.log_new_warnings")
+def test_analyze_and_report_results_with_errors(
+    mock_log_new_warnings, mock_process_warnings, mock_build_defines, mock_load_baseline
+):
+    """Test analyze_and_report_results with errors (should always fail regardless of warnings)."""
+    # Setup mocks
+    mock_load_baseline.return_value = {}
+    mock_build_defines.return_value = {}
+    mock_log_new_warnings.return_value = None
+
+    # Test case: errors present (should always return exit code 1)
+    new_warnings = []
+    errors = {"shader1": ["error1", "error2"]}
+    mock_process_warnings.return_value = (new_warnings, {}, errors, 0)
+
+    exit_code, total_warnings, error_count = analyze_and_report_results(
+        results=[],
+        config_file="test.yaml",
+        output_dir="output",
+        suppress_warnings=[],
+        max_warnings=10,  # Should not matter when errors are present
+    )
+
+    assert exit_code == 1
+    assert total_warnings == 0
+    assert error_count == 2

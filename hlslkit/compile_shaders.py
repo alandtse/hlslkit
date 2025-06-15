@@ -827,7 +827,7 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
         "--max-warnings",
         type=int,
         default=defaults.get("max-warnings", 0),
-        help="Maximum allowed NEW warnings",
+        help="Warning control: positive=max new warnings, negative=must eliminate N baseline warnings, 0=no new warnings",
     )
     parser.add_argument(
         "--suppress-warnings",
@@ -1257,9 +1257,49 @@ def analyze_and_report_results(
         logging.error(f"Errors ({max_to_show} of {error_count}):\n" + "\n".join(error_items[:max_to_show]))
         if error_count > max_to_show:
             logging.error(f"...and {error_count - max_to_show} more errors")
-        return 1, total_new_warnings, error_count
+        return 1, total_new_warnings, error_count  # Enhanced warning threshold logic to support negative values
+    if max_warnings < 0:
+        # Negative max_warnings means user must eliminate existing warnings
+        baseline_warning_count = sum(len(warning_data["instances"]) for warning_data in baseline_warnings.values())
+        current_total_warnings = baseline_warning_count + total_new_warnings
+        required_reduction = abs(max_warnings)
+        # If required reduction exceeds baseline, target is 0 warnings (eliminate all)
+        target_warning_count = max(0, baseline_warning_count - required_reduction)
 
-    if total_new_warnings > max_warnings:
+        if current_total_warnings > target_warning_count:
+            eliminated_warnings = baseline_warning_count - (current_total_warnings - total_new_warnings)
+            if target_warning_count == 0:
+                logging.error(
+                    f"Must eliminate all warnings: required reduction {required_reduction} exceeds "
+                    f"baseline count {baseline_warning_count}. Current total: {current_total_warnings}, "
+                    f"target: {target_warning_count} warnings."
+                )
+            else:
+                needed_elimination = required_reduction - eliminated_warnings
+                logging.error(
+                    f"Insufficient warning reduction: need to eliminate {required_reduction} warnings, "
+                    f"but only eliminated {eliminated_warnings}. Need {needed_elimination} more eliminations."
+                )
+            logging.info(
+                f"Baseline warnings: {baseline_warning_count}, "
+                f"New warnings: {total_new_warnings}, "
+                f"Target: ≤{target_warning_count} total warnings"
+            )
+            return 1, total_new_warnings, error_count
+        else:
+            eliminated_warnings = baseline_warning_count - (current_total_warnings - total_new_warnings)
+            if target_warning_count == 0:
+                logging.info(
+                    f"All warnings eliminated: required reduction {required_reduction} exceeded "
+                    f"baseline count {baseline_warning_count}. Achieved zero warnings goal."
+                )
+            else:
+                logging.info(
+                    f"Warning reduction goal met: eliminated {eliminated_warnings} warnings "
+                    f"(required: {required_reduction}), {total_new_warnings} new warnings"
+                )
+    elif total_new_warnings > max_warnings:
+        # Positive max_warnings means limit on new warnings (original behavior)
         logging.error(f"Too many new warnings ({total_new_warnings} > {max_warnings})")
         return 1, total_new_warnings, error_count
 
