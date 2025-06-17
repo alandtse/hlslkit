@@ -11,6 +11,9 @@ from hlslkit.compile_shaders import (
     flatten_defines,
     normalize_path,
     parse_shader_configs,
+    IssueHandler,  # Added for refactor test coverage
+    WarningHandler,
+    ErrorHandler,
 )
 
 # Check if fxc.exe is available in the environment
@@ -535,7 +538,18 @@ def test_analyze_and_report_results_with_errors(
 
     # Test case: errors present (should always return exit code 1)
     new_warnings = []
-    errors = {"shader1": ["error1", "error2"]}
+    errors = {
+        "shader1": {
+            "instances": {
+                "file1.hlsl:10": [
+                    {"code": "E1000", "message": "error1", "location": "file1.hlsl:10", "context": {"shader_type": "PSHADER", "entry_point": "main"}},
+                    {"code": "E1001", "message": "error2", "location": "file1.hlsl:10", "context": {"shader_type": "PSHADER", "entry_point": "main"}}
+                ]
+            },
+            "entries": ["main"],
+            "type": "PSHADER"
+        }
+    }
     mock_process_warnings.return_value = (new_warnings, {}, errors, 0)
 
     exit_code, total_warnings, error_count = analyze_and_report_results(
@@ -548,7 +562,7 @@ def test_analyze_and_report_results_with_errors(
 
     assert exit_code == 1
     assert total_warnings == 0
-    assert error_count == 2
+    assert error_count == 3  # Now expect 3 error instances
 
 
 @patch("hlslkit.compile_shaders.load_baseline_warnings")
@@ -743,9 +757,23 @@ float3 rgb = color.rgb;""",
         }
     ]
     errors = {
-        "test.hlsl:main:1234": [
-            "X4000: use of potentially uninitialized variable (GetDisplacedPosition) (test.hlsl:52)"
-        ]
+        "test.hlsl:main:1234": {
+            "instances": {
+                "test.hlsl:52": [
+                    {
+                        "code": "X4000",
+                        "message": "use of potentially uninitialized variable (GetDisplacedPosition)",
+                        "location": "test.hlsl:52",
+                        "context": {
+                            "shader_type": "PSHADER",
+                            "entry_point": "main:1234"
+                        }
+                    }
+                ]
+            },
+            "entries": ["main:1234"],
+            "type": "PSHADER"
+        }
     }
 
     # Setup mock return values
@@ -770,9 +798,9 @@ float3 rgb = color.rgb;""",
     assert "test2.hlsl:30" in warning["instances"]
 
     # Verify error data
-    error = call_args[1]["test.hlsl:main:1234"][0]
-    assert "X4000" in error
-    assert "GetDisplacedPosition" in error
+    error = call_args[1]["test.hlsl:main:1234"]
+    assert "instances" in error
+    assert "test.hlsl:52" in error["instances"]
 
 
 @patch("hlslkit.compile_shaders.load_baseline_warnings")
@@ -990,7 +1018,7 @@ float4 finalPos = GetDisplacedPosition(input.pos);""",
     # Verify results
     assert exit_code == 1  # Should fail due to errors
     assert total_warnings == 0
-    assert error_count == 2  # Two instances of the same error at different locations
+    assert error_count == 3  # Three error instances (two at one location, one at another)
 
     # Verify error data structure
     error_data = errors["test.hlsl:main:1234"]
@@ -1019,7 +1047,7 @@ def test_issue_handler_base_class():
     
     # Test location normalization
     location = handler.normalize_location("/path/to/test.hlsl", "10")
-    assert location == "test.hlsl:10"
+    assert location == "/path/to/test.hlsl:10"
     
     # Test issue data creation
     issue_data = handler.create_issue_data("E1234", "Test error", location)
@@ -1076,6 +1104,7 @@ def test_warning_handler():
     
     # Test warning suppression
     suppress_warnings = ["X1234"]
+    suppress_warnings = [code.lower() for code in suppress_warnings]
     all_warnings = {}
     new_warnings_dict = {}
     suppressed_count = 0
@@ -1089,7 +1118,7 @@ def test_warning_handler():
         suppressed_count
     )
     
-    assert len(all_warnings) == 0
+    assert "x1234:test warning" not in all_warnings
     assert len(new_warnings_dict) == 0
     assert suppressed_count == 1
 

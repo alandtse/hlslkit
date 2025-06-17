@@ -1416,12 +1416,13 @@ def analyze_and_report_results(
             shader_type = error_data.get("type", "unknown")
 
             logging.error(f"\nFile: {shader_file} (entry: {entry_point}, type: {shader_type}):")
-            for error in error_data["instances"].values():
-                logging.error(f"   ERROR {error['code']}: {error['message']}")
-                if error.get("location"):
-                    logging.error(f"      Location: {error['location']}")
-                if error.get("context"):
-                    logging.error(f"      Context: {error['context']['shader_type']} - {error['context']['entry_point']}")
+            for error_list in error_data["instances"].values():
+                for error in error_list:
+                    logging.error(f"   ERROR {error['code']}: {error['message']}")
+                    if error.get("location"):
+                        logging.error(f"      Location: {error['location']}")
+                    if error.get("context"):
+                        logging.error(f"      Context: {error['context']['shader_type']} - {error['context']['entry_point']}")
 
         logging.error("\nACTION REQUIRED: Fix all compilation errors above before proceeding.")
         logging.error("Check the full compilation log for additional context and details.")
