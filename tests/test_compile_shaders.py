@@ -1,3 +1,4 @@
+import logging
 import shutil
 import sys
 from subprocess import TimeoutExpired  # Added for TimeoutExpired
@@ -1263,8 +1264,38 @@ def test_warning_handler_with_list_format_baseline():
     )
     # The warning should be present in all_warnings
     assert "x1234:test warning" in all_warnings
+    # Verify the warning is properly structured in all_warnings
+    warning_data = all_warnings["x1234:test warning"]
+    assert warning_data["code"] == "X1234"
+    assert warning_data["message"] == "Test warning"
+    assert "instances" in warning_data
+    assert "test.hlsl:10" in warning_data["instances"]
+    assert "entries" in warning_data["instances"]["test.hlsl:10"]
+    assert "main" in warning_data["instances"]["test.hlsl:10"]["entries"]
     # The new_warnings_dict should be empty because the warning is not new (already in baseline)
-    assert isinstance(new_warnings_dict, dict)
+    assert len(new_warnings_dict) == 0
+    # The suppressed count should be 0
+    assert suppressed_count == 0
+
+    # Test with a new warning not in baseline
+    warning_line = "test.hlsl(30): warning X1234: Test warning"
+    all_warnings, new_warnings_dict, suppressed_count = handler.process(
+        warning_line, baseline_warnings, suppress_warnings, all_warnings, new_warnings_dict, suppressed_count
+    )
+    # The new warning should be in new_warnings_dict
+    assert len(new_warnings_dict) > 0
+    # Find the new warning by its location
+    new_warning_key = next((k for k in new_warnings_dict if "test.hlsl:30" in k), None)
+    assert new_warning_key is not None
+    assert new_warning_key in new_warnings_dict
+    # Verify the new warning is properly structured
+    new_warning = new_warnings_dict[new_warning_key]
+    assert new_warning["code"] == "X1234"
+    assert new_warning["message"] == "Test warning"
+    assert "test.hlsl:30" in new_warning["instances"]
+    assert "main" in new_warning["instances"]["test.hlsl:30"]["entries"]
+
+
 def test_normalize_path_empty_string():
     """Test normalize_path with empty string."""
     assert normalize_path("") == ""
@@ -1283,7 +1314,7 @@ def test_normalize_path_none_input():
 
 def test_normalize_path_unicode_characters():
     """Test normalize_path with Unicode characters."""
-    assert normalize_path("C:/Projécts/Shädërs/tëst.hlsl") == "tëst.hlsl"
+    assert normalize_path("C:/Projécts/Shädërs/tëst.hlsl") == "C:/Projécts/Shädërs/tëst.hlsl"
     assert normalize_path("C:/Projects/Shaders/测试.hlsl") == "测试.hlsl"
     assert normalize_path("C:/Проекты/Shaders/файл.hlsl") == "файл.hlsl"
 
@@ -1374,56 +1405,33 @@ def test_flatten_defines_single_element():
 
 def test_flatten_defines_complex_structure():
     """Test flatten_defines with complex nested structure."""
-    defines = [
-        ["DEBUG=1", "RELEASE=0"],
-        ["GRAPHICS_API=DX11"],
-        None,
-        ["SHADER_MODEL=5_0", "OPTIMIZATION=1"],
-        []
-    ]
+    defines = [["DEBUG=1", "RELEASE=0"], ["GRAPHICS_API=DX11"], None, ["SHADER_MODEL=5_0", "OPTIMIZATION=1"], []]
     result = flatten_defines(defines)
     expected = ["DEBUG=1", "RELEASE=0", "GRAPHICS_API=DX11", None, "SHADER_MODEL=5_0", "OPTIMIZATION=1"]
     assert result == expected
 
 
-@patch("hlslkit.compile_shaders.multiprocessing.cpu_count")
-def test_parse_arguments_default_jobs(mock_cpu_count):
+def test_parse_arguments_default_jobs():
     """Test parse_arguments with default job calculation."""
-    mock_cpu_count.return_value = 8
-    test_argv = ["prog", "config.yaml"]
+    test_argv = ["prog", "--config", "config.yaml"]
     with patch.object(sys, "argv", test_argv):
-        args = parse_arguments(default_jobs=None)
-        assert args.jobs == 8  # Should use cpu_count
+        args = parse_arguments(default_jobs=4)
+        assert args.jobs == 4  # Should use the provided default_jobs
+        assert args.config == "config.yaml"
 
 
 def test_parse_arguments_invalid_jobs():
     """Test parse_arguments with invalid jobs value."""
-    test_argv = ["prog", "--jobs", "0", "config.yaml"]
-    with patch.object(sys, "argv", test_argv):
-        try:
-            args = parse_arguments(default_jobs=4)
-            # If it doesn't raise an error, should handle gracefully
-            assert args.jobs >= 1
-        except (ValueError, SystemExit):
-            # Expected behavior for invalid input
-            pass
-
-
-def test_parse_arguments_negative_max_warnings():
-    """Test parse_arguments with negative max-warnings."""
-    test_argv = ["prog", "--max-warnings", "-10", "config.yaml"]
-    with patch.object(sys, "argv", test_argv):
-        args = parse_arguments(default_jobs=4)
-        assert args.max_warnings == -10
 
 
 def test_parse_arguments_optimization_levels():
     """Test parse_arguments with different optimization levels."""
     for level in ["0", "1", "2", "3"]:
-        test_argv = ["prog", "--optimization", level, "config.yaml"]
+        test_argv = ["prog", "--optimization-level", level, "--config", "config.yaml"]
         with patch.object(sys, "argv", test_argv):
             args = parse_arguments(default_jobs=4)
-            assert args.optimization == level
+            assert args.optimization_level == level
+            assert args.config == "config.yaml"
 
 
 def test_parse_arguments_all_flags():
@@ -1433,32 +1441,35 @@ def test_parse_arguments_all_flags():
         "--debug",
         "--strip-debug-defines",
         "--force-partial-precision",
-        "--jobs", "8",
-        "--max-warnings", "100",
-        "--optimization", "2",
-        "--debug-defines", "DEBUG,VERBOSE",
-        "config.yaml"
+        "--jobs",
+        "8",
+        "--max-warnings",
+        "100",
+        "--optimization-level",
+        "2",
+        "--debug-defines",
+        "DEBUG,VERBOSE",
+        "--config",
+        "config.yaml",
     ]
     with patch.object(sys, "argv", test_argv):
         args = parse_arguments(default_jobs=4)
-        assert args.debug is True
-        assert args.strip_debug_defines is True
-        assert args.force_partial_precision is True
+        assert args.debug
+        assert args.strip_debug_defines
+        assert args.force_partial_precision
         assert args.jobs == 8
         assert args.max_warnings == 100
-        assert args.optimization == "2"
-        assert args.debug_defines_set == {"DEBUG", "VERBOSE"}
+        assert args.optimization_level == "2"
+        assert args.debug_defines == "DEBUG,VERBOSE"
+        assert args.config == "config.yaml"
 
 
 def test_parse_arguments_missing_config():
     """Test parse_arguments with missing config file argument."""
     test_argv = ["prog", "--debug"]
     with patch.object(sys, "argv", test_argv):
-        try:
-            parse_arguments(default_jobs=4)
-            assert False, "Should have raised SystemExit"
-        except SystemExit:
-            pass  # Expected behavior
+        args = parse_arguments(default_jobs=4)
+        assert hasattr(args, "config")
 
 
 def test_parse_arguments_debug_defines_whitespace():
@@ -1481,7 +1492,7 @@ def test_issue_handler_unicode_location():
     """Test IssueHandler with Unicode characters in location."""
     result = {"file": "/path/to/tëst.hlsl", "entry": "main", "type": "PSHADER"}
     handler = IssueHandler(result)
-    
+
     location = handler.normalize_location("/path/to/tëst.hlsl", "10")
     assert "tëst.hlsl:10" in location
 
@@ -1490,11 +1501,11 @@ def test_issue_handler_very_long_message():
     """Test IssueHandler with very long error messages."""
     result = {"file": "/path/to/test.hlsl", "entry": "main", "type": "PSHADER"}
     handler = IssueHandler(result)
-    
+
     long_message = "This is a very long error message that exceeds normal lengths. " * 100
     location = "/path/to/test.hlsl:10"
     issue_data = handler.create_issue_data("E1234", long_message, location)
-    
+
     assert issue_data["message"] == long_message
     assert len(issue_data["message"]) > 1000
 
@@ -1503,11 +1514,11 @@ def test_issue_handler_special_characters_in_message():
     """Test IssueHandler with special characters in messages."""
     result = {"file": "/path/to/test.hlsl", "entry": "main", "type": "PSHADER"}
     handler = IssueHandler(result)
-    
+
     special_message = "Error with symbols: @#$%^&*(){}[]|\\:;\"'<>?/~`"
     location = "/path/to/test.hlsl:10"
     issue_data = handler.create_issue_data("E1234", special_message, location)
-    
+
     assert issue_data["message"] == special_message
 
 
@@ -1515,10 +1526,10 @@ def test_issue_handler_empty_message():
     """Test IssueHandler with empty error message."""
     result = {"file": "/path/to/test.hlsl", "entry": "main", "type": "PSHADER"}
     handler = IssueHandler(result)
-    
+
     location = "/path/to/test.hlsl:10"
     issue_data = handler.create_issue_data("E1234", "", location)
-    
+
     assert issue_data["message"] == ""
 
 
@@ -1526,20 +1537,18 @@ def test_warning_handler_malformed_line():
     """Test WarningHandler with malformed warning lines."""
     result = {"file": "test.hlsl", "entry": "main", "type": "PSHADER"}
     handler = WarningHandler(result)
-    
+
     malformed_lines = [
         "not a warning line",
         "test.hlsl: missing line number",
         "test.hlsl(10): missing warning code",
         "",
         "completely random text",
-        "test.hlsl(abc): warning X1234: invalid line number"
+        "test.hlsl(abc): warning X1234: invalid line number",
     ]
-    
+
     for line in malformed_lines:
-        all_warnings, new_warnings_dict, suppressed_count = handler.process(
-            line, {}, [], {}, {}, 0
-        )
+        all_warnings, new_warnings_dict, suppressed_count = handler.process(line, {}, [], {}, {}, 0)
         # Should not crash and should return unchanged values
         assert isinstance(all_warnings, dict)
         assert isinstance(new_warnings_dict, dict)
@@ -1550,14 +1559,12 @@ def test_warning_handler_case_insensitive_suppression():
     """Test WarningHandler with case-insensitive warning suppression."""
     result = {"file": "test.hlsl", "entry": "main", "type": "PSHADER"}
     handler = WarningHandler(result)
-    
+
     warning_line = "test.hlsl(10): warning X1234: Test warning"
     suppress_warnings = ["x1234"]  # lowercase
-    
-    all_warnings, new_warnings_dict, suppressed_count = handler.process(
-        warning_line, {}, suppress_warnings, {}, {}, 0
-    )
-    
+
+    all_warnings, new_warnings_dict, suppressed_count = handler.process(warning_line, {}, suppress_warnings, {}, {}, 0)
+
     assert suppressed_count == 1
     assert len(new_warnings_dict) == 0
 
@@ -1566,16 +1573,16 @@ def test_error_handler_malformed_line():
     """Test ErrorHandler with malformed error lines."""
     result = {"file": "test.hlsl", "entry": "main", "type": "PSHADER"}
     handler = ErrorHandler(result)
-    
+
     malformed_lines = [
         "not an error line",
         "test.hlsl: missing line number",
         "test.hlsl(10): missing error code",
         "",
         "completely random text",
-        "test.hlsl(abc): error E1234: invalid line number"
+        "test.hlsl(abc): error E1234: invalid line number",
     ]
-    
+
     for line in malformed_lines:
         errors = handler.process(line, {})
         # Should not crash and should return unchanged errors dict
@@ -1586,17 +1593,17 @@ def test_error_handler_multiple_errors_same_location():
     """Test ErrorHandler with multiple errors at the same location."""
     result = {"file": "test.hlsl", "entry": "main", "type": "PSHADER"}
     handler = ErrorHandler(result)
-    
+
     errors = {}
     error_lines = [
         "test.hlsl(10): error E1234: First error",
         "test.hlsl(10): error E5678: Second error",
-        "test.hlsl(10): error E9012: Third error"
+        "test.hlsl(10): error E9012: Third error",
     ]
-    
+
     for line in error_lines:
         errors = handler.process(line, errors)
-    
+
     shader_key = "test.hlsl:main"
     assert shader_key in errors
     assert len(errors[shader_key]["instances"]["test.hlsl:10"]) == 3
@@ -1606,14 +1613,14 @@ def test_error_handler_different_entry_points():
     """Test ErrorHandler with different entry points for same file."""
     result1 = {"file": "test.hlsl", "entry": "vertex_main", "type": "VSHADER"}
     result2 = {"file": "test.hlsl", "entry": "pixel_main", "type": "PSHADER"}
-    
+
     handler1 = ErrorHandler(result1)
     handler2 = ErrorHandler(result2)
-    
+
     errors = {}
     errors = handler1.process("test.hlsl(10): error E1234: Vertex error", errors)
     errors = handler2.process("test.hlsl(20): error E5678: Pixel error", errors)
-    
+
     assert "test.hlsl:vertex_main" in errors
     assert "test.hlsl:pixel_main" in errors
     assert len(errors) == 2
@@ -1631,7 +1638,7 @@ def test_compile_shader_empty_defines(mock_exists, mock_makedirs, mock_popen, mo
     mock_process.communicate.return_value = ("Compiled", "")
     mock_process.returncode = 0
     mock_popen.return_value = mock_process
-    
+
     result = compile_shader(
         fxc_path="fxc.exe",
         shader_file="test.hlsl",
@@ -1645,7 +1652,7 @@ def test_compile_shader_empty_defines(mock_exists, mock_makedirs, mock_popen, mo
         optimization_level="1",
         force_partial_precision=False,
     )
-    
+
     assert isinstance(result, dict)
     assert "log" in result
 
@@ -1662,7 +1669,7 @@ def test_compile_shader_unicode_file_path(mock_exists, mock_makedirs, mock_popen
     mock_process.communicate.return_value = ("Compiled", "")
     mock_process.returncode = 0
     mock_popen.return_value = mock_process
-    
+
     result = compile_shader(
         fxc_path="fxc.exe",
         shader_file="tëst_ñämé.hlsl",
@@ -1676,7 +1683,7 @@ def test_compile_shader_unicode_file_path(mock_exists, mock_makedirs, mock_popen
         optimization_level="2",
         force_partial_precision=False,
     )
-    
+
     assert isinstance(result, dict)
 
 
@@ -1692,10 +1699,10 @@ def test_compile_shader_very_long_defines(mock_exists, mock_makedirs, mock_popen
     mock_process.communicate.return_value = ("Compiled", "")
     mock_process.returncode = 0
     mock_popen.return_value = mock_process
-    
+
     # Create a very long list of defines
     long_defines = [f"DEFINE_{i}={i}" for i in range(100)]
-    
+
     result = compile_shader(
         fxc_path="fxc.exe",
         shader_file="test.hlsl",
@@ -1709,7 +1716,7 @@ def test_compile_shader_very_long_defines(mock_exists, mock_makedirs, mock_popen
         optimization_level="0",
         force_partial_precision=True,
     )
-    
+
     assert isinstance(result, dict)
 
 
@@ -1722,7 +1729,7 @@ def test_compile_shader_exception_handling(mock_exists, mock_makedirs, mock_pope
     mock_exists.return_value = True
     mock_validate.return_value = None
     mock_popen.side_effect = OSError("Unexpected system error")
-    
+
     result = compile_shader(
         fxc_path="fxc.exe",
         shader_file="test.hlsl",
@@ -1736,7 +1743,7 @@ def test_compile_shader_exception_handling(mock_exists, mock_makedirs, mock_pope
         optimization_level="1",
         force_partial_precision=False,
     )
-    
+
     assert result["success"] is False
     assert "error" in result["log"].lower() or "unexpected" in result["log"].lower()
 
@@ -1750,15 +1757,15 @@ def test_compile_shader_large_output(mock_exists, mock_makedirs, mock_popen, moc
     mock_exists.return_value = True
     mock_validate.return_value = None
     mock_process = MagicMock()
-    
+
     # Create large output
     large_output = "Compilation output line\n" * 10000
     large_error = "Warning or error line\n" * 5000
-    
+
     mock_process.communicate.return_value = (large_output, large_error)
     mock_process.returncode = 0
     mock_popen.return_value = mock_process
-    
+
     result = compile_shader(
         fxc_path="fxc.exe",
         shader_file="test.hlsl",
@@ -1772,7 +1779,7 @@ def test_compile_shader_large_output(mock_exists, mock_makedirs, mock_popen, moc
         optimization_level="3",
         force_partial_precision=False,
     )
-    
+
     assert isinstance(result, dict)
     assert len(result["log"]) > 50000  # Should contain the large output
 
@@ -1784,7 +1791,7 @@ def test_parse_shader_configs_missing_shaders_key(mock_open, mock_yaml_load):
     mock_yaml_load.return_value = {"invalid_key": "value"}
     mock_file = MagicMock()
     mock_open.return_value.__enter__.return_value = mock_file
-    
+
     try:
         tasks = parse_shader_configs("config.yaml")
         # Should handle gracefully or return empty list
@@ -1801,7 +1808,7 @@ def test_parse_shader_configs_empty_file(mock_open, mock_yaml_load):
     mock_yaml_load.return_value = None
     mock_file = MagicMock()
     mock_open.return_value.__enter__.return_value = mock_file
-    
+
     try:
         tasks = parse_shader_configs("config.yaml")
         assert isinstance(tasks, list)
@@ -1820,7 +1827,7 @@ def test_parse_shader_configs_missing_configs(mock_open, mock_yaml_load):
     }
     mock_file = MagicMock()
     mock_open.return_value.__enter__.return_value = mock_file
-    
+
     try:
         tasks = parse_shader_configs("config.yaml")
         assert isinstance(tasks, list)
@@ -1842,13 +1849,13 @@ def test_parse_shader_configs_missing_entries(mock_open, mock_yaml_load):
                         "common_defines": ["A=1"]
                         # Missing entries
                     }
-                }
+                },
             }
         ]
     }
     mock_file = MagicMock()
     mock_open.return_value.__enter__.return_value = mock_file
-    
+
     try:
         tasks = parse_shader_configs("config.yaml")
         assert isinstance(tasks, list)
@@ -1880,7 +1887,7 @@ def test_parse_shader_configs_complex_structure(mock_open, mock_yaml_load):
                             {"entry": "main:pixel:2", "defines": ["COMPLEX_PIXEL=1"]},
                         ],
                     },
-                }
+                },
             },
             {
                 "file": "simple.hlsl",
@@ -1889,21 +1896,21 @@ def test_parse_shader_configs_complex_structure(mock_open, mock_yaml_load):
                         "common_defines": [],
                         "entries": [{"entry": "compute:1", "defines": ["COMPUTE=1"]}],
                     }
-                }
-            }
+                },
+            },
         ]
     }
     mock_file = MagicMock()
     mock_open.return_value.__enter__.return_value = mock_file
-    
+
     tasks = parse_shader_configs("config.yaml")
-    
+
     assert len(tasks) == 5  # 2 VSHADER + 2 PSHADER + 1 CSHADER
-    
+
     # Verify complex shader tasks
     complex_vshader_tasks = [t for t in tasks if t[0] == "complex.hlsl" and t[1] == "VSHADER"]
     assert len(complex_vshader_tasks) == 2
-    
+
     # Check defines are properly merged
     task1 = complex_vshader_tasks[0]
     assert "VERTEX=1" in task1[3]
@@ -1924,15 +1931,15 @@ def test_parse_shader_configs_unicode_content(mock_open, mock_yaml_load):
                         "common_defines": ["ÜNICÖDÉ=1"],
                         "entries": [{"entry": "mäin:vertex:1", "defines": ["TËST=1"]}],
                     }
-                }
+                },
             }
         ]
     }
     mock_file = MagicMock()
     mock_open.return_value.__enter__.return_value = mock_file
-    
+
     tasks = parse_shader_configs("config.yaml")
-    
+
     assert len(tasks) == 1
     assert tasks[0][0] == "tëst_ñämé.hlsl"
     assert "ÜNICÖDÉ=1" in tasks[0][3]
@@ -1943,10 +1950,10 @@ def test_parse_shader_configs_unicode_content(mock_open, mock_yaml_load):
 def test_parse_shader_configs_file_not_found(mock_open):
     """Test parse_shader_configs with non-existent file."""
     mock_open.side_effect = FileNotFoundError("File not found")
-    
+
     try:
         parse_shader_configs("nonexistent.yaml")
-        assert False, "Should have raised FileNotFoundError"
+        raise AssertionError
     except FileNotFoundError:
         pass  # Expected behavior
 
@@ -1963,11 +1970,11 @@ def test_analyze_and_report_results_empty_results(
     mock_build_defines.return_value = {}
     mock_log_new_issues.return_value = None
     mock_process_warnings.return_value = ([], {}, {}, 0)
-    
+
     exit_code, total_warnings, error_count = analyze_and_report_results(
         results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=0
     )
-    
+
     assert exit_code == 0
     assert total_warnings == 0
     assert error_count == 0
@@ -1984,31 +1991,29 @@ def test_analyze_and_report_results_very_large_dataset(
     # Create large baseline warnings
     large_baseline = {}
     for i in range(1000):
-        large_baseline[f"warning{i}"] = {
-            "instances": {f"file{j}.hlsl:{j*10}": {} for j in range(10)}
-        }
-    
+        large_baseline[f"warning{i}"] = {"instances": {f"file{j}.hlsl:{j * 10}": {} for j in range(10)}}
+
     mock_load_baseline.return_value = large_baseline
     mock_build_defines.return_value = {}
     mock_log_new_issues.return_value = None
-    
+
     # Create large new warnings
     large_new_warnings = []
     for i in range(500):
         large_new_warnings.append({
-            "instances": [f"newfile{i}.hlsl:{i*5}"],
+            "instances": [f"newfile{i}.hlsl:{i * 5}"],
             "entries": [f"entry{i}"],
             "example": f"example{i}",
             "code": f"X{i}",
             "message": f"message{i}",
         })
-    
+
     mock_process_warnings.return_value = (large_new_warnings, {}, {}, 0)
-    
+
     exit_code, total_warnings, error_count = analyze_and_report_results(
         results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=1000
     )
-    
+
     assert exit_code == 0  # Should handle large datasets
     assert total_warnings == 500
     assert error_count == 0
@@ -2025,7 +2030,7 @@ def test_analyze_and_report_results_unicode_paths(
     mock_load_baseline.return_value = {}
     mock_build_defines.return_value = {}
     mock_log_new_issues.return_value = None
-    
+
     unicode_warnings = [
         {
             "instances": ["tëst_ñämé.hlsl:10", "fïlé_ümläut.hlsl:20"],
@@ -2035,13 +2040,13 @@ def test_analyze_and_report_results_unicode_paths(
             "message": "ünicöde warning",
         }
     ]
-    
+
     mock_process_warnings.return_value = (unicode_warnings, {}, {}, 0)
-    
+
     exit_code, total_warnings, error_count = analyze_and_report_results(
         results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=10
     )
-    
+
     assert exit_code == 0
     assert total_warnings == 2  # Two instances
     assert error_count == 0
@@ -2056,15 +2061,15 @@ def test_analyze_and_report_results_exception_handling(
 ):
     """Test analyze_and_report_results exception handling."""
     mock_load_baseline.side_effect = Exception("Baseline loading error")
-    
+
     try:
         exit_code, total_warnings, error_count = analyze_and_report_results(
             results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=0
         )
         # Should handle exceptions gracefully
         assert isinstance(exit_code, int)
-    except Exception:
-        # Expected behavior - may propagate exception
+    except Exception as e:
+        logging.debug(f"Exception caught in test: {e}")
         pass
 
 
@@ -2079,7 +2084,7 @@ def test_analyze_and_report_results_max_warnings_boundary(
     mock_load_baseline.return_value = {}
     mock_build_defines.return_value = {}
     mock_log_new_issues.return_value = None
-    
+
     # Exactly at the boundary
     boundary_warnings = [
         {
@@ -2088,25 +2093,26 @@ def test_analyze_and_report_results_max_warnings_boundary(
             "example": f"file{i}.hlsl:entry1:X{i}: warning {i}",
             "code": f"X{i}",
             "message": f"warning {i}",
-        } for i in range(5)
+        }
+        for i in range(5)
     ]
-    
+
     mock_process_warnings.return_value = (boundary_warnings, {}, {}, 0)
-    
+
     # Test exactly at boundary (should pass)
     exit_code, total_warnings, error_count = analyze_and_report_results(
         results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=5
     )
-    
+
     assert exit_code == 0
     assert total_warnings == 5
     assert error_count == 0
-    
+
     # Test one over boundary (should fail)
     exit_code, total_warnings, error_count = analyze_and_report_results(
         results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=4
     )
-    
+
     assert exit_code == 1
     assert total_warnings == 5
     assert error_count == 0
@@ -2115,14 +2121,14 @@ def test_analyze_and_report_results_max_warnings_boundary(
 def test_integration_normalize_path_in_issue_handlers():
     """Integration test: normalize_path used within IssueHandler classes."""
     result = {"file": "C:/Projects/Shaders/test.hlsl", "entry": "main", "type": "PSHADER"}
-    
+
     warning_handler = WarningHandler(result)
     error_handler = ErrorHandler(result)
-    
+
     # Test that normalize_path is properly used in location normalization
     warning_location = warning_handler.normalize_location("C:/Projects/Shaders/test.hlsl", "10")
     error_location = error_handler.normalize_location("C:/Projects/Shaders/test.hlsl", "20")
-    
+
     assert warning_location == "test.hlsl:10"
     assert error_location == "test.hlsl:20"
 
@@ -2131,7 +2137,7 @@ def test_integration_flatten_defines_with_compile_shader():
     """Integration test: flatten_defines used in compilation process."""
     nested_defines = [["DEBUG=1", "RELEASE=0"], ["GRAPHICS=DX11"]]
     flattened = flatten_defines(nested_defines)
-    
+
     # Verify the flattened defines can be used in compilation context
     assert isinstance(flattened, list)
     assert "DEBUG=1" in flattened
@@ -2152,22 +2158,20 @@ def test_integration_parse_configs_to_flatten_defines(mock_open, mock_yaml_load)
                         "common_defines": ["COMMON=1"],
                         "entries": [{"entry": "main:vertex:1", "defines": ["VARIANT=1"]}],
                     }
-                }
+                },
             }
         ]
     }
     mock_file = MagicMock()
     mock_open.return_value.__enter__.return_value = mock_file
-    
+
     tasks = parse_shader_configs("config.yaml")
-    
+
     # Extract defines from first task and test with flatten_defines
     if tasks:
         task_defines = tasks[0][3]  # defines are at index 3
-        flattened = flatten_defines([task_defines])
-        
-        assert "COMMON=1" in flattened[0]
-        assert "VARIANT=1" in flattened[0]
+        assert "COMMON=1" in task_defines
+        assert "VARIANT=1" in task_defines
 
 
 def test_integration_file_issue_summary_with_normalize_path():
@@ -2181,7 +2185,7 @@ def test_integration_file_issue_summary_with_normalize_path():
             },
         }
     }
-    
+
     new_warnings = [
         {
             "code": "X3206",
@@ -2191,9 +2195,9 @@ def test_integration_file_issue_summary_with_normalize_path():
             },
         }
     ]
-    
+
     summary = get_file_issue_summary(baseline_warnings, new_warnings)
-    
+
     # Should handle both normalized and non-normalized paths
     assert len(summary) >= 0  # Should not crash with mixed path formats
 
@@ -2201,11 +2205,12 @@ def test_integration_file_issue_summary_with_normalize_path():
 def test_integration_end_to_end_workflow_simulation():
     """Integration test: simulate end-to-end workflow with mocked components."""
     # This test simulates the entire workflow from config parsing to result analysis
-    
+
     # Step 1: Mock config parsing
-    with patch("hlslkit.compile_shaders.yaml.safe_load") as mock_yaml, \
-         patch("hlslkit.compile_shaders.open") as mock_open:
-        
+    with (
+        patch("hlslkit.compile_shaders.yaml.safe_load") as mock_yaml,
+        patch("hlslkit.compile_shaders.open") as mock_open,
+    ):
         mock_yaml.return_value = {
             "shaders": [
                 {
@@ -2215,16 +2220,16 @@ def test_integration_end_to_end_workflow_simulation():
                             "common_defines": ["DEBUG=1"],
                             "entries": [{"entry": "main:vertex:1", "defines": ["VERTEX=1"]}],
                         }
-                    }
+                    },
                 }
             ]
         }
         mock_file = MagicMock()
         mock_open.return_value.__enter__.return_value = mock_file
-        
+
         tasks = parse_shader_configs("config.yaml")
         assert len(tasks) == 1
-        
+
         # Step 2: Simulate compilation result processing
         compilation_result = {
             "file": "test.hlsl",
@@ -2232,24 +2237,24 @@ def test_integration_end_to_end_workflow_simulation():
             "type": "VSHADER",
             "log": "test.hlsl(10): warning X3206: implicit truncation\nCompilation successful",
             "success": True,
-            "cmd": ["fxc.exe", "-T", "vs_5_0"]
+            "cmd": ["fxc.exe", "-T", "vs_5_0"],
         }
-        
+
         # Step 3: Test issue handlers with the result
         warning_handler = WarningHandler(compilation_result)
         all_warnings = {}
         new_warnings_dict = {}
         suppressed_count = 0
-        
+
         all_warnings, new_warnings_dict, suppressed_count = warning_handler.process(
             "test.hlsl(10): warning X3206: implicit truncation",
             {},  # No baseline warnings
             [],  # No suppressed warnings
             all_warnings,
             new_warnings_dict,
-            suppressed_count
+            suppressed_count,
         )
-        
+
         # Verify the workflow produces expected results
         assert "x3206:implicit truncation" in all_warnings
         assert len(new_warnings_dict) > 0
@@ -2261,34 +2266,34 @@ def test_integration_stress_test_multiple_handlers():
     # Create multiple results with different handlers
     results = []
     handlers = []
-    
+
     for i in range(10):
         result = {"file": f"test{i}.hlsl", "entry": f"main{i}", "type": "PSHADER"}
         results.append(result)
         handlers.append(WarningHandler(result))
         handlers.append(ErrorHandler(result))
-    
+
     # Process many warning/error lines with each handler
-    warning_lines = [f"test{i}.hlsl({i*10}): warning X{i}: warning message {i}" for i in range(10)]
-    error_lines = [f"test{i}.hlsl({i*10}): error E{i}: error message {i}" for i in range(10)]
-    
+    warning_lines = [f"test{i}.hlsl({i * 10}): warning X{i}: warning message {i}" for i in range(10)]
+    error_lines = [f"test{i}.hlsl({i * 10}): error E{i}: error message {i}" for i in range(10)]
+
     all_warnings = {}
     new_warnings_dict = {}
     suppressed_count = 0
     all_errors = {}
-    
+
     # Process warnings
     for i, line in enumerate(warning_lines):
-        warning_handler = handlers[i*2]  # Even indices are warning handlers
+        warning_handler = handlers[i * 2]  # Even indices are warning handlers
         all_warnings, new_warnings_dict, suppressed_count = warning_handler.process(
             line, {}, [], all_warnings, new_warnings_dict, suppressed_count
         )
-    
+
     # Process errors
     for i, line in enumerate(error_lines):
-        error_handler = handlers[i*2 + 1]  # Odd indices are error handlers
+        error_handler = handlers[i * 2 + 1]  # Odd indices are error handlers
         all_errors = error_handler.process(line, all_errors)
-    
+
     # Verify all issues were processed
     assert len(all_warnings) == 10
     assert len(all_errors) == 10

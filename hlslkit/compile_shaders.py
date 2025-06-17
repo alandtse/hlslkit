@@ -58,39 +58,25 @@ except ImportError:
 
 
 def normalize_path(file_path: str) -> str:
-    """Normalize a file path by standardizing separators and extracting relative path.
-
-    This function ensures paths are consistent across platforms by:
-    1. Converting backslashes to forward slashes
-    2. Removing duplicate slashes
-    3. Extracting the path after the last occurrence of 'Shaders/' or 'Shaders' (case-insensitive)
-       If no 'Shaders' is found, returns the path as-is with normalized separators.
+    """Normalize a file path by removing the 'Shaders' prefix and standardizing path separators.
 
     Args:
-        file_path (str): The file path to normalize.
+        file_path: The file path to normalize
 
     Returns:
-        str: The normalized file path, with the 'Shaders' prefix removed if present.
-
-    Example:
-        >>> normalize_path("C:/Projects/Shaders/src/test.hlsl")
-        'src/test.hlsl'
-        >>> normalize_path("C:/Projects/Shaders")
-        ''
-        >>> normalize_path("C:/Projects/src/test.hlsl")
-        'C:/Projects/src/test.hlsl'
+        The normalized file path
     """
+    if not file_path:
+        return ""
+    # Always normalize slashes first
     file_path = file_path.replace("\\", "/")
-    file_path = re.sub(r"/+", "/", file_path)
-    # Find the last occurrence of 'Shaders' (case-insensitive) with optional trailing slash
+    # Split on 'Shaders' (case-insensitive) followed by a slash or end of string
     parts = re.split(r"(?i)Shaders(?:/|$)", file_path)
     if len(parts) > 1:
-        norm_path = parts[-1]
-        logging.debug(f"Normalized path (Shaders found): {file_path} -> {norm_path}")
-        return norm_path
-    norm_path = file_path
-    logging.debug(f"Normalized path (no Shaders, using as-is): {file_path} -> {norm_path}")
-    return norm_path
+        normalized = parts[-1].strip("/")
+        return normalized
+    # If no 'Shaders' found, return the path with normalized slashes
+    return file_path
 
 
 def flatten_defines(defines: list) -> list[str]:
@@ -482,7 +468,6 @@ class WarningHandler(IssueHandler):
         new_warnings_dict: dict,
         suppressed_count: int,
     ) -> tuple[dict, dict, int]:
-        """Process a warning line."""
         warning_match = re.match(WARNING_REGEX, line)
         if not warning_match:
             return all_warnings, new_warnings_dict, suppressed_count
@@ -496,12 +481,9 @@ class WarningHandler(IssueHandler):
             logging.debug(f"Suppressed warning: {warning_code} at {location}")
             return all_warnings, new_warnings_dict, suppressed_count
 
-        # Create context-aware warning key
-        context_warning_key = f"{warning_key}:{self.context['shader_type']}:{self.context['entry_point']}"
-
-        if warning_key not in all_warnings:
+        # Always use dict format for all_warnings
+        if warning_key not in all_warnings or not isinstance(all_warnings[warning_key], dict):
             all_warnings[warning_key] = {"code": warning_code, "message": warning_msg, "instances": {}}
-
         if location not in all_warnings[warning_key]["instances"]:
             all_warnings[warning_key]["instances"][location] = {"entries": []}
         if self.context["entry_point"] not in all_warnings[warning_key]["instances"][location]["entries"]:
@@ -520,24 +502,29 @@ class WarningHandler(IssueHandler):
                 )
             else:  # legacy list format - count every occurrence
                 baseline_count = len(instances)
-
-            if baseline_count > 0:
-                current_instances = all_warnings[warning_key]["instances"]
-                if isinstance(current_instances, dict):
-                    current_count = sum(
-                        1
-                        for _loc, _inst in current_instances.items()
-                        if self.context["entry_point"].lower() in [e.lower() for e in _inst.get("entries", [])]
-                    )
-                else:  # legacy list format - count every occurrence
-                    current_count = len(current_instances)
-                is_new_warning = current_count > baseline_count
+                # Convert all_warnings to dict format if needed
+                if not isinstance(all_warnings[warning_key], dict):
+                    all_warnings[warning_key] = {"code": warning_code, "message": warning_msg, "instances": {}}
+                for loc in instances:
+                    if loc not in all_warnings[warning_key]["instances"]:
+                        all_warnings[warning_key]["instances"][loc] = {"entries": []}
+                    if self.context["entry_point"] not in all_warnings[warning_key]["instances"][loc]["entries"]:
+                        all_warnings[warning_key]["instances"][loc]["entries"].append(self.context["entry_point"])
+            current_instances = all_warnings[warning_key]["instances"]
+            current_count = sum(
+                1
+                for _loc, _inst in current_instances.items()
+                if self.context["entry_point"].lower() in [e.lower() for e in _inst.get("entries", [])]
+            )
+            is_new_warning = current_count > baseline_count
 
         if is_new_warning:
             warning_str = f"{self.shader_key}:{warning_code}: {warning_msg} ({location})"
-            warning_id = f"{context_warning_key}:{location.lower()}"
-            if warning_id not in new_warnings_dict:
-                new_warnings_dict[warning_id] = {
+            context_warning_key = (
+                f"{warning_key}:{self.context['shader_type']}:{self.context['entry_point']}:{location.lower()}"
+            )
+            if context_warning_key not in new_warnings_dict:
+                new_warnings_dict[context_warning_key] = {
                     "warning_key": warning_key,
                     "location": location,
                     "code": warning_code,
@@ -546,13 +533,17 @@ class WarningHandler(IssueHandler):
                     "entries": [],
                     "instances": {},
                 }
-            if self.shader_key not in new_warnings_dict[warning_id]["entries"]:
-                new_warnings_dict[warning_id]["entries"].append(self.shader_key)
-
-            if location not in new_warnings_dict[warning_id]["instances"]:
-                new_warnings_dict[warning_id]["instances"][location] = {"entries": []}
-            if self.shader_key not in new_warnings_dict[warning_id]["instances"][location]["entries"]:
-                new_warnings_dict[warning_id]["instances"][location]["entries"].append(self.shader_key)
+            if self.context["entry_point"] not in new_warnings_dict[context_warning_key]["entries"]:
+                new_warnings_dict[context_warning_key]["entries"].append(self.context["entry_point"])
+            if location not in new_warnings_dict[context_warning_key]["instances"]:
+                new_warnings_dict[context_warning_key]["instances"][location] = {"entries": []}
+            if (
+                self.context["entry_point"]
+                not in new_warnings_dict[context_warning_key]["instances"][location]["entries"]
+            ):
+                new_warnings_dict[context_warning_key]["instances"][location]["entries"].append(
+                    self.context["entry_point"]
+                )
 
         return all_warnings, new_warnings_dict, suppressed_count
 
