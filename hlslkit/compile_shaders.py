@@ -195,7 +195,7 @@ def compile_shader(
         strip_debug_defines (bool): Strip debug-related defines.
         optimization_level (str): Optimization level (0-3).
         force_partial_precision (bool): Force 16-bit precision.
-        debug_defines (set): Set of debug defines to strip.
+        debug_defines (Optional[set[str]]): Set of debug defines to strip.
 
     Returns:
         dict[str, any]: Compilation result with file, entry, type, log, success, and command.
@@ -266,8 +266,11 @@ def compile_shader(
     if debug_defines is None:
         debug_defines = {"DEBUG", "_DEBUG", "D3D_DEBUG_INFO", "D3DCOMPILE_DEBUG", "D3DCOMPILE_SKIP_OPTIMIZATION"}
     if strip_debug_defines:
-        defines = [d for d in defines if d.split("=")[0].upper() not in debug_defines]
-        defines.append("D3DCOMPILE_AVOID_FLOW_CONTROL")
+        # Work on a copy to avoid mutating the shared task definition
+        filtered_defines = [d for d in defines if d.split("=", 1)[0].upper() not in debug_defines]
+        if "D3DCOMPILE_AVOID_FLOW_CONTROL" not in filtered_defines:
+            filtered_defines.append("D3DCOMPILE_AVOID_FLOW_CONTROL")
+        defines = filtered_defines
         logging.debug(
             f"Stripped debug defines and added D3DCOMPILE_AVOID_FLOW_CONTROL for {shader_file}:{entry}. Defines: {defines}"
         )
@@ -442,6 +445,7 @@ class IssueHandler:
         self.result = result
         self.file_name = os.path.basename(result["file"])
         self.shader_key = f"{self.file_name}:{result['entry']}"
+        # Store both original and lowercase versions for lookups
         self.shader_key_lower = self.shader_key.lower()
         self.context = {"shader_type": result["type"], "entry_point": result["entry"]}
 
