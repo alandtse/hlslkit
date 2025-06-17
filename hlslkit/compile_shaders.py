@@ -30,7 +30,6 @@ import time
 from collections import deque
 from datetime import datetime
 from types import FrameType
-from typing import Any
 
 import yaml
 from tqdm import tqdm
@@ -59,29 +58,25 @@ except ImportError:
 
 
 def normalize_path(file_path: str) -> str:
-    """Normalize a file path by standardizing separators and extracting relative path.
+    """Normalize a file path by removing the 'Shaders' prefix and standardizing path separators.
 
     Args:
-        file_path (str): The file path to normalize.
+        file_path: The file path to normalize
 
     Returns:
-        str: The normalized file path, relative to the Shaders directory if present.
-
-    Example:
-        >>> normalize_path("C:/Projects/Shaders/src/test.hlsl")
-        'src/test.hlsl'
+        The normalized file path
     """
+    if not file_path:
+        return ""
+    # Always normalize slashes first
     file_path = file_path.replace("\\", "/")
-    file_path = re.sub(r"/+", "/", file_path)
-    pattern = r"(?i).*?\bShaders[/](.*)"
-    match = re.search(pattern, file_path)
-    if match:
-        norm_path = match.group(1).replace("\\", "/")
-        logging.debug(f"Normalized path (Shaders found): {file_path} -> {norm_path}")
-        return norm_path
-    norm_path = file_path.replace("\\", "/")
-    logging.debug(f"Normalized path (no Shaders, using as-is): {file_path} -> {norm_path}")
-    return norm_path
+    # Split on 'Shaders' (case-insensitive) followed by a slash or end of string
+    parts = re.split(r"(?i)Shaders(?:/|$)", file_path)
+    if len(parts) > 1:
+        normalized = parts[-1].strip("/")
+        return normalized
+    # If no 'Shaders' found, return the path with normalized slashes
+    return file_path
 
 
 def flatten_defines(defines: list) -> list[str]:
@@ -172,7 +167,8 @@ def compile_shader(
     strip_debug_defines: bool = False,
     optimization_level: str = "1",
     force_partial_precision: bool = False,
-) -> dict[str, Any]:
+    debug_defines: set[str] | None = None,
+) -> dict[str, object]:
     """Compile a shader using fxc.exe.
 
     Args:
@@ -187,6 +183,7 @@ def compile_shader(
         strip_debug_defines (bool): Strip debug-related defines.
         optimization_level (str): Optimization level (0-3).
         force_partial_precision (bool): Force 16-bit precision.
+        debug_defines (set[str] | None): Set of debug defines to strip.
 
     Returns:
         dict[str, any]: Compilation result with file, entry, type, log, success, and command.
@@ -254,16 +251,14 @@ def compile_shader(
             "cmd": [],
         }
 
+    if debug_defines is None:
+        debug_defines = {"DEBUG", "_DEBUG", "D3D_DEBUG_INFO", "D3DCOMPILE_DEBUG", "D3DCOMPILE_SKIP_OPTIMIZATION"}
     if strip_debug_defines:
-        debug_defines = {
-            "DEBUG",
-            "_DEBUG",
-            "D3D_DEBUG_INFO",
-            "D3DCOMPILE_DEBUG",
-            "D3DCOMPILE_SKIP_OPTIMIZATION",
-        }
-        defines = [d for d in defines if d.split("=")[0].upper() not in debug_defines]
-        defines.append("D3DCOMPILE_AVOID_FLOW_CONTROL")
+        # Work on a copy to avoid mutating the shared task definition
+        filtered_defines = [d for d in defines if d.split("=", 1)[0].upper() not in debug_defines]
+        if "D3DCOMPILE_AVOID_FLOW_CONTROL" not in filtered_defines:
+            filtered_defines.append("D3DCOMPILE_AVOID_FLOW_CONTROL")
+        defines = filtered_defines
         logging.debug(
             f"Stripped debug defines and added D3DCOMPILE_AVOID_FLOW_CONTROL for {shader_file}:{entry}. Defines: {defines}"
         )
@@ -431,6 +426,152 @@ def build_defines_lookup(config_file: str) -> dict:
     return defines_lookup
 
 
+class IssueHandler:
+    """Base class for handling compilation issues (warnings and errors)."""
+
+    def __init__(self, result: dict):
+        self.result = result
+        self.file_name = os.path.basename(result["file"])
+        self.shader_key = f"{self.file_name}:{result['entry']}"
+        # Store both original and lowercase versions for lookups
+        self.shader_key_lower = self.shader_key.lower()
+        self.context = {"shader_type": result["type"], "entry_point": result["entry"]}
+
+    def normalize_location(self, file_path: str, line_info: str) -> str:
+        """Normalize file path and create location string."""
+        norm_file_path = normalize_path(file_path)
+        return f"{norm_file_path}:{line_info}"
+
+    def create_issue_data(self, code: str, message: str, location: str) -> dict:
+        """Create a standardized issue data structure."""
+        return {"code": code, "message": message, "location": location, "context": self.context.copy()}
+
+    def add_to_instances(self, instances: dict, location: str, issue_data: dict) -> None:
+        """Add an issue to the instances dictionary."""
+        if location not in instances:
+            instances[location] = []
+        if not any(
+            i["code"] == issue_data["code"] and i["message"] == issue_data["message"] for i in instances[location]
+        ):
+            instances[location].append(issue_data)
+
+
+class WarningHandler(IssueHandler):
+    """Handler for compilation warnings."""
+
+    def process(
+        self,
+        line: str,
+        baseline_warnings: dict,
+        suppress_warnings: list[str],
+        all_warnings: dict,
+        new_warnings_dict: dict,
+        suppressed_count: int,
+    ) -> tuple[dict, dict, int]:
+        warning_match = re.match(WARNING_REGEX, line)
+        if not warning_match:
+            return all_warnings, new_warnings_dict, suppressed_count
+
+        file_path, line_info, warning_code, warning_msg = warning_match.groups()
+        location = self.normalize_location(file_path, line_info)
+        warning_key = f"{warning_code}:{warning_msg}".lower()
+
+        if warning_code.lower() in suppress_warnings:
+            suppressed_count += 1
+            logging.debug(f"Suppressed warning: {warning_code} at {location}")
+            return all_warnings, new_warnings_dict, suppressed_count
+
+        # Always use dict format for all_warnings
+        if warning_key not in all_warnings or not isinstance(all_warnings[warning_key], dict):
+            all_warnings[warning_key] = {"code": warning_code, "message": warning_msg, "instances": {}}
+        if location not in all_warnings[warning_key]["instances"]:
+            all_warnings[warning_key]["instances"][location] = {"entries": []}
+        if self.context["entry_point"] not in all_warnings[warning_key]["instances"][location]["entries"]:
+            all_warnings[warning_key]["instances"][location]["entries"].append(self.context["entry_point"])
+
+        # Check if this is a new warning
+        is_new_warning = True
+        if warning_key in baseline_warnings:
+            baseline_data = baseline_warnings[warning_key]
+            instances = baseline_data.get("instances", {})
+            if isinstance(instances, dict):
+                baseline_count = sum(
+                    1
+                    for _loc, _inst in instances.items()
+                    if self.context["entry_point"].lower() in [e.lower() for e in _inst.get("entries", [])]
+                )
+            else:  # legacy list format - count every occurrence
+                baseline_count = len(instances)
+                # Convert all_warnings to dict format if needed
+                if not isinstance(all_warnings[warning_key], dict):
+                    all_warnings[warning_key] = {"code": warning_code, "message": warning_msg, "instances": {}}
+                for loc in instances:
+                    if loc not in all_warnings[warning_key]["instances"]:
+                        all_warnings[warning_key]["instances"][loc] = {"entries": []}
+                    if self.context["entry_point"] not in all_warnings[warning_key]["instances"][loc]["entries"]:
+                        all_warnings[warning_key]["instances"][loc]["entries"].append(self.context["entry_point"])
+            current_instances = all_warnings[warning_key]["instances"]
+            current_count = sum(
+                1
+                for _loc, _inst in current_instances.items()
+                if self.context["entry_point"].lower() in [e.lower() for e in _inst.get("entries", [])]
+            )
+            is_new_warning = current_count > baseline_count
+
+        if is_new_warning:
+            warning_str = f"{self.shader_key}:{warning_code}: {warning_msg} ({location})"
+            context_warning_key = (
+                f"{warning_key}:{self.context['shader_type']}:{self.context['entry_point']}:{location.lower()}"
+            )
+            if context_warning_key not in new_warnings_dict:
+                new_warnings_dict[context_warning_key] = {
+                    "warning_key": warning_key,
+                    "location": location,
+                    "code": warning_code,
+                    "message": warning_msg,
+                    "example": warning_str,
+                    "entries": [],
+                    "instances": {},
+                }
+            if self.context["entry_point"] not in new_warnings_dict[context_warning_key]["entries"]:
+                new_warnings_dict[context_warning_key]["entries"].append(self.context["entry_point"])
+            if location not in new_warnings_dict[context_warning_key]["instances"]:
+                new_warnings_dict[context_warning_key]["instances"][location] = {"entries": []}
+            if (
+                self.context["entry_point"]
+                not in new_warnings_dict[context_warning_key]["instances"][location]["entries"]
+            ):
+                new_warnings_dict[context_warning_key]["instances"][location]["entries"].append(
+                    self.context["entry_point"]
+                )
+
+        return all_warnings, new_warnings_dict, suppressed_count
+
+
+class ErrorHandler(IssueHandler):
+    """Handler for compilation errors."""
+
+    def process(self, line: str, errors: dict) -> dict:
+        """Process an error line."""
+        error_match = re.match(ERROR_REGEX, line)
+        if not error_match:
+            return errors
+
+        file_path, line_info, error_code, error_msg = error_match.groups()
+        location = self.normalize_location(file_path, line_info)
+
+        if self.shader_key_lower not in errors:
+            errors[self.shader_key_lower] = {"instances": {}, "entries": [], "type": self.context["shader_type"]}
+
+        error_data = self.create_issue_data(error_code, error_msg, location)
+        self.add_to_instances(errors[self.shader_key_lower]["instances"], location, error_data)
+
+        if self.context["entry_point"] not in errors[self.shader_key_lower]["entries"]:
+            errors[self.shader_key_lower]["entries"].append(self.context["entry_point"])
+
+        return errors
+
+
 def process_single_warning(
     line: str,
     result: dict,
@@ -440,136 +581,17 @@ def process_single_warning(
     new_warnings_dict: dict,
     suppressed_warnings_count: int,
 ) -> tuple[dict, dict, int]:
-    """Process a single warning line from compilation output.
-
-    Args:
-        line (str): Log line containing a warning.
-        result (dict): Compilation result dictionary.
-        baseline_warnings (dict): Baseline warnings for comparison.
-        suppress_warnings (list[str]): Warning codes to suppress.
-        all_warnings (dict): Dictionary of all warnings.
-        new_warnings_dict (dict): Dictionary of new warnings.
-        suppressed_warnings_count (int): Count of suppressed warnings.
-
-    Returns:
-        tuple[dict, dict, int]: Updated all_warnings, new_warnings_dict, and suppressed_warnings_count.
-    """
-    warning_match = re.match(WARNING_REGEX, line)
-    if not warning_match:
-        return all_warnings, new_warnings_dict, suppressed_warnings_count
-
-    file_path, line_info, warning_code, warning_msg = warning_match.groups()
-    norm_file_path = normalize_path(file_path)
-    location = f"{norm_file_path}:{line_info}"
-    location_lower = location.lower()
-    warning_key = f"{warning_code}:{warning_msg}".lower()
-
-    if warning_code.lower() in suppress_warnings:
-        suppressed_warnings_count += 1
-        logging.debug(f"Suppressed warning: {warning_code} at {location}")
-        return all_warnings, new_warnings_dict, suppressed_warnings_count
-
-    location_parts = norm_file_path.split("/")
-    fallback_locations = [location_lower]
-    for i in range(len(location_parts)):
-        fallback_path = "/".join(location_parts[i:])
-        if fallback_path:
-            fallback_locations.append(f"{fallback_path}:{line_info}".lower())
-
-    if warning_code == "X4000" and not re.search(r"\([^)]+\)", warning_msg):
-        for _baseline_key, baseline_data in baseline_warnings.items():
-            if (
-                baseline_data["code"].lower() == warning_code.lower()
-                and baseline_data["message"].lower().startswith(warning_msg.lower())
-                and any(
-                    loc in {loc.replace("//", "/").lower(): inst for loc, inst in baseline_data["instances"].items()}
-                    for loc in fallback_locations
-                )
-            ):
-                warning_msg = baseline_data["message"]
-                warning_key = f"{warning_code}:{warning_msg}".lower()
-                logging.debug(f"X4000 warning missing variable; using baseline: {warning_key}")
-                break
-
-    if warning_key not in all_warnings:
-        all_warnings[warning_key] = {"code": warning_code, "message": warning_msg, "instances": {}}
-    if location_lower not in all_warnings[warning_key]["instances"]:
-        all_warnings[warning_key]["instances"][location_lower] = {"entries": []}
-    if result["entry"] not in all_warnings[warning_key]["instances"][location_lower]["entries"]:
-        all_warnings[warning_key]["instances"][location_lower]["entries"].append(result["entry"])
-
-    is_new_warning = True
-    if warning_key in baseline_warnings:
-        baseline_locations = {
-            loc.replace("//", "/").lower(): inst for loc, inst in baseline_warnings[warning_key]["instances"].items()
-        }
-        for loc in fallback_locations:
-            if loc in baseline_locations:
-                baseline_instance = baseline_locations[loc]
-                if baseline_instance.get("missing_entry", False):
-                    if (
-                        warning_code.lower() == baseline_warnings[warning_key]["code"].lower()
-                        and warning_msg.lower() == baseline_warnings[warning_key]["message"].lower()
-                    ):
-                        is_new_warning = False
-                        logging.debug(f"Matched missing_entry warning: {warning_key} at {loc}")
-                        break
-                elif result["entry"].lower() in [e.lower() for e in baseline_instance["entries"]]:
-                    is_new_warning = False
-                    logging.debug(f"Found baseline match: {warning_key} at {loc} for entry {result['entry']}")
-                    break
-    if is_new_warning:
-        shader_key = f"{os.path.basename(result['file'])}:{result['entry']}"
-        warning_str = f"{shader_key}:{warning_code}: {warning_msg} ({location})"
-        warning_id = f"{warning_key}:{location_lower}"
-        if warning_id not in new_warnings_dict:
-            new_warnings_dict[warning_id] = {
-                "warning_key": warning_key,
-                "location": location,
-                "code": warning_code,
-                "message": warning_msg,
-                "example": warning_str,
-                "entries": [],
-                "instances": {},  # Changed to dict to match YAML format
-            }
-        if shader_key not in new_warnings_dict[warning_id]["entries"]:
-            new_warnings_dict[warning_id]["entries"].append(shader_key)
-
-        # Add to instances dict with location as key (matching YAML format)
-        if location_lower not in new_warnings_dict[warning_id]["instances"]:
-            new_warnings_dict[warning_id]["instances"][location_lower] = {"entries": []}
-        if shader_key not in new_warnings_dict[warning_id]["instances"][location_lower]["entries"]:
-            new_warnings_dict[warning_id]["instances"][location_lower]["entries"].append(shader_key)
-
-    return all_warnings, new_warnings_dict, suppressed_warnings_count
+    """Process a single warning line from compilation output."""
+    handler = WarningHandler(result)
+    return handler.process(
+        line, baseline_warnings, suppress_warnings, all_warnings, new_warnings_dict, suppressed_warnings_count
+    )
 
 
 def process_single_error(line: str, result: dict, errors: dict) -> dict:
-    """Process a single error line from compilation output.
-
-    Args:
-        line (str): Log line containing an error.
-        result (dict): Compilation result dictionary.
-        errors (dict): Dictionary of errors.
-
-    Returns:
-        dict: Updated errors dictionary.
-    """
-    error_match = re.match(ERROR_REGEX, line)
-    if not error_match:
-        return errors
-
-    file_path, line_info, error_code, error_msg = error_match.groups()
-    norm_file_path = normalize_path(file_path)
-    location = f"{norm_file_path}:{line_info}"
-    shader_key = f"{os.path.basename(result['file'])}:{result['entry']}"
-    shader_key_lower = shader_key.lower()
-    if shader_key_lower not in errors:
-        errors[shader_key_lower] = []
-    error_text = f"{error_code}: {error_msg} ({location})"
-    if error_text not in errors[shader_key_lower]:
-        errors[shader_key_lower].append(error_text)
-    return errors
+    """Process a single error line from compilation output."""
+    handler = ErrorHandler(result)
+    return handler.process(line, errors)
 
 
 def process_warnings_and_errors(
@@ -664,47 +686,25 @@ def log_new_issues(
         issue_logger.info("=" * 60)
         issue_logger.info("")
 
-        for shader_key, error_msgs in errors.items():
-            shader_file = shader_key.split(":")[0]
+        for shader_key, error_data in errors.items():
+            shader_file = normalize_path(shader_key.split(":")[0])
             entry_point = ":".join(shader_key.split(":")[1:]) if ":" in shader_key else "unknown"
+            shader_type = error_data.get("type", "unknown")
 
-            issue_logger.info(f"ERROR in {shader_file} (entry: {entry_point}):")
+            issue_logger.info(f"ERROR in {shader_file} (entry: {entry_point}, type: {shader_type}):")
             issue_logger.info("-" * 40)
 
-            for error_msg in error_msgs:
-                # Parse error message to extract location and details
-                if "(" in error_msg and ")" in error_msg:
-                    # Extract location info from parentheses
-                    location_start = error_msg.find("(") + 1
-                    location_end = error_msg.find(")", location_start)
-                    location = error_msg[location_start:location_end]
-
-                    # Extract error code and message
-                    parts = error_msg.split(":", 2)
-                    if len(parts) >= 2:
-                        error_code = parts[0].strip()
-                        remaining = parts[1].strip()
-
-                        issue_logger.info(f"  Error Code: {error_code}")
-                        issue_logger.info(f"  Message: {remaining}")
-                        if location and location != "unknown":
-                            issue_logger.info(f"  Location: {location}")
-                    else:
-                        issue_logger.info(f"  Full Error: {error_msg}")
-                else:
-                    issue_logger.info(f"  Full Error: {error_msg}")
-
-                # Find and include compiler output context
-                for result in results:
-                    result_key = f"{os.path.basename(result['file'])}:{result['entry']}"
-                    if result_key == shader_key and result.get("log"):
-                        log_lines = result["log"].splitlines()
-                        error_lines = [line for line in log_lines if "error" in line.lower()]
-                        if error_lines:
-                            issue_logger.info(f"  Compiler output: {error_lines[0]}")
-                        break
-
-                issue_logger.info("")
+            # Group errors by location for better context
+            for location, error_instances in error_data["instances"].items():
+                issue_logger.info(f"  Location: {location}")
+                for error in error_instances:
+                    issue_logger.info(f"    Error Code: {error['code']}")
+                    issue_logger.info(f"    Message: {error['message']}")
+                    if error.get("context"):
+                        issue_logger.info(
+                            f"    Context: {error['context']['shader_type']} - {error['context']['entry_point']}"
+                        )
+                    issue_logger.info("")
 
             issue_logger.info("=" * 40)
             issue_logger.info("")
@@ -737,7 +737,7 @@ def log_new_issues(
 
                 # Show the actual compilation output for this location
                 for result in results:
-                    shader_key = f"{os.path.basename(result['file'])}:{result['entry']}"
+                    shader_key = f"{normalize_path(os.path.basename(result['file']))}:{result['entry']}"
                     if shader_key in location_data["entries"]:
                         if result.get("log"):
                             log_lines = result["log"].splitlines()
@@ -745,7 +745,13 @@ def log_new_issues(
                                 line for line in log_lines if warning["code"] in line and location.split(":")[0] in line
                             ]
                             if warning_lines:
-                                issue_logger.info(f"  Compiler output: {warning_lines[0]}")
+                                warning_line_index = log_lines.index(warning_lines[0])
+                                context_start = max(0, warning_line_index - 2)
+                                context_end = min(len(log_lines), warning_line_index + 3)
+                                context = log_lines[context_start:context_end]
+                                issue_logger.info("  Compiler output context:")
+                                for ctx_line in context:
+                                    issue_logger.info(f"    {ctx_line}")
                         break
 
                 issue_logger.info("")
@@ -770,7 +776,7 @@ def log_new_issues(
     issue_logger.removeHandler(issue_handler)
 
 
-def parse_args_for_defaults() -> dict[str, Any]:
+def parse_args_for_defaults() -> dict[str, object]:
     """Parse command-line arguments to extract default values.
 
     Returns:
@@ -973,9 +979,24 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
         default=defaults.get("debug", False),
         help="Enable debug output",
     )
+    parser.add_argument(
+        "--debug-defines",
+        default=defaults.get(
+            "debug-defines", "DEBUG,_DEBUG,D3D_DEBUG_INFO,D3DCOMPILE_DEBUG,D3DCOMPILE_SKIP_OPTIMIZATION"
+        ),
+        help="Comma-separated list of defines to treat as debug (default: common debug defines)",
+    )
     if not is_gui_mode:
         parser.add_argument("-g", "--gui", action="store_true", help="Run with GUI")
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    # Pre-compute debug defines set to avoid repeated parsing
+    if args.debug_defines and args.debug_defines.strip():
+        args.debug_defines_set = {d.strip().upper() for d in args.debug_defines.split(",") if d.strip()} or None
+    else:
+        args.debug_defines_set = None
+
+    return args
 
 
 def setup_environment(args: argparse.Namespace) -> tuple[int, int | None, bool]:
@@ -1140,13 +1161,13 @@ def manage_jobs(
 
 def submit_tasks(
     executor: concurrent.futures.ThreadPoolExecutor,
-    task_iterator: Any,  # Iterator cannot be typed precisely without collections.abc
+    task_iterator: object,  # Iterator cannot be typed precisely without collections.abc
     active_tasks: int,
     target_jobs: int,
     args: argparse.Namespace,
     futures: dict,
     shader_dir: str,
-) -> tuple[int, Any]:
+) -> tuple[int, object]:
     """Submit compilation tasks to the executor.
 
     Args:
@@ -1177,6 +1198,7 @@ def submit_tasks(
                 args.strip_debug_defines,
                 args.optimization_level,
                 args.force_partial_precision,
+                args.debug_defines_set,
             )
             futures[future] = task
             active_tasks += 1
@@ -1313,6 +1335,63 @@ def run_compilation(args: argparse.Namespace, cpu_count: int, physical_cores: in
     return results
 
 
+def get_file_issue_summary(baseline_warnings: dict, new_warnings: list[dict]) -> dict:
+    """Generate a summary of issue changes per file, only counting truly new issues. Handles both dict and list formats for 'instances'."""
+    file_summary = {}
+
+    # Build a set of (file_path, location, entry) for baseline
+    baseline_set = set()
+    for warning_data in baseline_warnings.values():
+        instances = warning_data.get("instances", {})
+        if isinstance(instances, dict):
+            for _location, loc_data in instances.items():
+                file_path = _location.split(":")[0]
+                for _entry in loc_data.get("entries", []):
+                    baseline_set.add((file_path, _location, _entry))
+        elif isinstance(instances, list):
+            for _location in instances:
+                file_path = _location.split(":")[0]
+                baseline_set.add((file_path, _location, None))
+
+    # Build a set of (file_path, location, entry) for new_warnings
+    new_set = set()
+    for warning in new_warnings:
+        instances = warning.get("instances", {})
+        if isinstance(instances, dict):
+            for _location, loc_data in instances.items():
+                file_path = _location.split(":")[0]
+                for _entry in loc_data.get("entries", []):
+                    new_set.add((file_path, _location, _entry))
+        elif isinstance(instances, list):
+            for _location in instances:
+                file_path = _location.split(":")[0]
+                # Use entries from warning['entries'] if available, else None
+                entries = warning.get("entries", [None])
+                for _entry in entries:
+                    new_set.add((file_path, _location, _entry))
+
+    # Only count as new if not in baseline
+    truly_new = new_set - baseline_set
+
+    # Count baseline and new per file
+    for file_path, _location, _entry in baseline_set:
+        if file_path not in file_summary:
+            file_summary[file_path] = {"baseline": 0, "new": 0, "total": 0}
+        file_summary[file_path]["baseline"] += 1
+        file_summary[file_path]["total"] += 1
+    for file_path, _location, _entry in new_set:
+        if file_path not in file_summary:
+            file_summary[file_path] = {"baseline": 0, "new": 0, "total": 0}
+        file_summary[file_path]["total"] += 1
+    for file_path, _location, _entry in truly_new:
+        if file_path not in file_summary:
+            file_summary[file_path] = {"baseline": 0, "new": 0, "total": 0}
+        file_summary[file_path]["new"] += 1
+
+    # Only report files with truly new issues
+    return {k: v for k, v in file_summary.items() if v["new"] > 0}
+
+
 def analyze_and_report_results(
     results: list[dict],
     config_file: str,
@@ -1343,26 +1422,34 @@ def analyze_and_report_results(
     logging.info(
         f"Compilation complete: {total_new_warnings} new warnings, {suppressed_warnings_count} suppressed warnings, {len(errors)} errors"
     )
+
+    # Generate and log file-level summary
+    file_summary = get_file_issue_summary(baseline_warnings, new_warnings)
+    if file_summary:
+        logging.warning("\n*** FILE-LEVEL ISSUE SUMMARY:")
+        for file_path, stats in sorted(file_summary.items(), key=lambda x: x[1]["new"], reverse=True):
+            logging.warning(
+                f"  {file_path}: {stats['new']} new issues " f"(baseline: {stats['baseline']}, total: {stats['total']})"
+            )
+        logging.warning("")
+
     if new_warnings:
         unique_warnings = sorted(new_warnings, key=lambda x: get_instance_count(x), reverse=True)
-        max_to_show = min(10, len(unique_warnings))  # Show more warnings for better visibility
+        max_to_show = min(10, len(unique_warnings))
         logging.warning(f"*** NEW WARNINGS DETECTED ({len(unique_warnings)} unique, {total_new_warnings} total):")
         for i, warning in enumerate(unique_warnings[:max_to_show], 1):
             count = get_instance_count(warning)
             affected_variants = len(warning["entries"])
             percentage = (count / total_new_warnings * 100) if total_new_warnings > 0 else 0
 
-            # Enhanced warning display with specific locations
             logging.warning(f"\n{i}. {warning['code']}: {warning['message']}")
             logging.warning(
                 f"   Impact: {count} occurrences across {affected_variants} shader variants ({percentage:.1f}%)"
-            )  # Show specific file locations and line numbers
+            )
             locations_shown = 0
-            max_locations = 3  # Show up to 3 specific locations per warning
+            max_locations = 3
 
-            # Handle both list and dictionary formats for instances
             if isinstance(warning["instances"], dict):
-                # Dictionary format: {"location": {"entries": [...]}}
                 for location, location_data in warning["instances"].items():
                     if locations_shown >= max_locations:
                         remaining_locations = len(warning["instances"]) - locations_shown
@@ -1371,12 +1458,10 @@ def analyze_and_report_results(
                         )
                         break
 
-                    # Parse file and line info for better display
                     file_part = location.split(":")[0] if ":" in location else location
                     line_part = ":".join(location.split(":")[1:]) if ":" in location else "unknown"
 
-                    # Show affected shader entries for this location
-                    entries_list = list(location_data["entries"])[:2]  # Show first 2 entries
+                    entries_list = list(location_data["entries"])[:2]
                     entries_str = ", ".join(entries_list)
                     if len(location_data["entries"]) > 2:
                         entries_str += f" (+{len(location_data['entries']) - 2} more)"
@@ -1384,7 +1469,6 @@ def analyze_and_report_results(
                     logging.warning(f"   Location: {file_part}:{line_part} (entries: {entries_str})")
                     locations_shown += 1
             else:
-                # List format: ["location1", "location2", ...] (for backward compatibility)
                 for location in warning["instances"][:max_locations]:
                     file_part = location.split(":")[0] if ":" in location else location
                     line_part = ":".join(location.split(":")[1:]) if ":" in location else "unknown"
@@ -1406,32 +1490,21 @@ def analyze_and_report_results(
     if errors:
         logging.error(f"*** COMPILATION ERRORS DETECTED ({error_count} total errors):")
 
-        for shader_key, error_msgs in errors.items():
-            shader_file = shader_key.split(":")[0]
+        for shader_key, error_data in errors.items():
+            shader_file = normalize_path(shader_key.split(":")[0])
             entry_point = ":".join(shader_key.split(":")[1:]) if ":" in shader_key else "unknown"
+            shader_type = error_data.get("type", "unknown")
 
-            logging.error(f"\nFile: {shader_file} (entry: {entry_point}):")
-            for error_msg in error_msgs:
-                # Parse error message to extract location and details
-                if "(" in error_msg and ")" in error_msg:
-                    # Extract location info from parentheses
-                    location_start = error_msg.find("(") + 1
-                    location_end = error_msg.find(")", location_start)
-                    location = error_msg[location_start:location_end]
-
-                    # Extract error code and message
-                    parts = error_msg.split(":", 2)
-                    if len(parts) >= 2:
-                        error_code = parts[0].strip()
-                        remaining = parts[1].strip()
-
-                        logging.error(f"   ERROR {error_code}: {remaining}")
-                        if location and location != "unknown":
-                            logging.error(f"      Location: {location}")
-                    else:
-                        logging.error(f"   ERROR: {error_msg}")
-                else:
-                    logging.error(f"   ERROR: {error_msg}")
+            logging.error(f"\nFile: {shader_file} (entry: {entry_point}, type: {shader_type}):")
+            for error_list in error_data["instances"].values():
+                for error in error_list:
+                    logging.error(f"   ERROR {error['code']}: {error['message']}")
+                    if error.get("location"):
+                        logging.error(f"      Location: {error['location']}")
+                    if error.get("context"):
+                        logging.error(
+                            f"      Context: {error['context']['shader_type']} - {error['context']['entry_point']}"
+                        )
 
         logging.error("\nACTION REQUIRED: Fix all compilation errors above before proceeding.")
         logging.error("Check the full compilation log for additional context and details.")
