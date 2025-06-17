@@ -6,14 +6,15 @@ import pytest
 import yaml  # Added for YAMLError
 
 from hlslkit.compile_shaders import (
+    ErrorHandler,
+    IssueHandler,  # Added for refactor test coverage
+    WarningHandler,
     analyze_and_report_results,
     compile_shader,
     flatten_defines,
+    get_file_issue_summary,
     normalize_path,
     parse_shader_configs,
-    IssueHandler,  # Added for refactor test coverage
-    WarningHandler,
-    ErrorHandler,
 )
 
 # Check if fxc.exe is available in the environment
@@ -21,10 +22,10 @@ HAS_FXC = shutil.which("fxc.exe") is not None
 
 
 def test_normalize_path_with_shaders():
-    """Test normalize_path with Shaders in path."""
-    path = "C:/Projects/Shaders/src/test.hlsl"
-    expected = "src/test.hlsl"
-    assert normalize_path(path) == expected
+    """Test path normalization with Shaders directory."""
+    assert normalize_path("C:/Projects/Shaders/src/test.hlsl") == "src/test.hlsl"
+    assert normalize_path("D:\\Games\\Skyrim\\Shaders\\water.hlsl") == "water.hlsl"
+    assert normalize_path("/home/user/skyrim-community-shaders/build/all/aio/Shaders/water.hlsl") == "water.hlsl"
 
 
 def test_normalize_path_no_shaders():
@@ -46,6 +47,14 @@ def test_normalize_path_with_mixed_slashes():
     path = "C:/Projects\\Shaders/src\\test.hlsl"
     expected = "src/test.hlsl"
     assert normalize_path(path) == expected
+
+
+def test_normalize_path_yaml_style():
+    """Test path normalization with YAML-style paths."""
+    assert normalize_path("common/color.hlsli") == "common/color.hlsli"
+    assert normalize_path("shaders/common/color.hlsli") == "common/color.hlsli"
+    assert normalize_path("Shaders/common/color.hlsli") == "common/color.hlsli"
+    assert normalize_path("C:/Projects/Shaders/common/color.hlsli") == "common/color.hlsli"
 
 
 def test_flatten_defines():
@@ -542,12 +551,22 @@ def test_analyze_and_report_results_with_errors(
         "shader1": {
             "instances": {
                 "file1.hlsl:10": [
-                    {"code": "E1000", "message": "error1", "location": "file1.hlsl:10", "context": {"shader_type": "PSHADER", "entry_point": "main"}},
-                    {"code": "E1001", "message": "error2", "location": "file1.hlsl:10", "context": {"shader_type": "PSHADER", "entry_point": "main"}}
+                    {
+                        "code": "E1000",
+                        "message": "error1",
+                        "location": "file1.hlsl:10",
+                        "context": {"shader_type": "PSHADER", "entry_point": "main"},
+                    },
+                    {
+                        "code": "E1001",
+                        "message": "error2",
+                        "location": "file1.hlsl:10",
+                        "context": {"shader_type": "PSHADER", "entry_point": "main"},
+                    },
                 ]
             },
             "entries": ["main"],
-            "type": "PSHADER"
+            "type": "PSHADER",
         }
     }
     mock_process_warnings.return_value = (new_warnings, {}, errors, 0)
@@ -578,11 +597,7 @@ def test_warning_detection_with_line_shift(
         "x4000:warning message": {
             "code": "X4000",
             "message": "warning message",
-            "instances": {
-                "src/test.hlsl:50": {
-                    "entries": ["test.hlsl:main:1234"]
-                }
-            }
+            "instances": {"src/test.hlsl:50": {"entries": ["test.hlsl:main:1234"]}},
         }
     }
     mock_load_baseline.return_value = baseline_warnings
@@ -598,7 +613,7 @@ def test_warning_detection_with_line_shift(
         config_file="test.yaml",
         output_dir="output",
         suppress_warnings=[],
-        max_warnings=0  # Should pass since it's the same warning in same context
+        max_warnings=0,  # Should pass since it's the same warning in same context
     )
 
     assert exit_code == 0
@@ -619,11 +634,7 @@ def test_warning_detection_with_context_change(
         "x4000:warning message": {
             "code": "X4000",
             "message": "warning message",
-            "instances": {
-                "src/test.hlsl:50": {
-                    "entries": ["test.hlsl:main:1234"]
-                }
-            }
+            "instances": {"src/test.hlsl:50": {"entries": ["test.hlsl:main:1234"]}},
         }
     }
     mock_load_baseline.return_value = baseline_warnings
@@ -643,11 +654,7 @@ def test_warning_detection_with_context_change(
     mock_process_warnings.return_value = (new_warnings, {}, {}, 0)
 
     exit_code, total_warnings, error_count = analyze_and_report_results(
-        results=[],
-        config_file="test.yaml",
-        output_dir="output",
-        suppress_warnings=[],
-        max_warnings=0
+        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=0
     )
 
     assert exit_code == 1  # Should fail since it's a new warning in a different context
@@ -669,13 +676,9 @@ def test_warning_detection_with_multiple_instances(
             "code": "X4000",
             "message": "warning message",
             "instances": {
-                "src/test.hlsl:50": {
-                    "entries": ["test.hlsl:main:1234"]
-                },
-                "src/test.hlsl:60": {
-                    "entries": ["test.hlsl:main:1234"]
-                }
-            }
+                "src/test.hlsl:50": {"entries": ["test.hlsl:main:1234"]},
+                "src/test.hlsl:60": {"entries": ["test.hlsl:main:1234"]},
+            },
         }
     }
     mock_load_baseline.return_value = baseline_warnings
@@ -695,11 +698,7 @@ def test_warning_detection_with_multiple_instances(
     mock_process_warnings.return_value = (new_warnings, {}, {}, 0)
 
     exit_code, total_warnings, error_count = analyze_and_report_results(
-        results=[],
-        config_file="test.yaml",
-        output_dir="output",
-        suppress_warnings=[],
-        max_warnings=0
+        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=0
     )
 
     assert exit_code == 1  # Should fail since there's one new instance
@@ -711,9 +710,7 @@ def test_warning_detection_with_multiple_instances(
 @patch("hlslkit.compile_shaders.build_defines_lookup")
 @patch("hlslkit.compile_shaders.process_warnings_and_errors")
 @patch("hlslkit.compile_shaders.log_new_issues")
-def test_new_issues_log_formatting(
-    mock_log_new_issues, mock_process_warnings, mock_build_defines, mock_load_baseline
-):
+def test_new_issues_log_formatting(mock_log_new_issues, mock_process_warnings, mock_build_defines, mock_load_baseline):
     """Test that new_issues.log is properly formatted with context."""
     # Setup mock results with warnings and errors
     results = [
@@ -764,15 +761,12 @@ float3 rgb = color.rgb;""",
                         "code": "X4000",
                         "message": "use of potentially uninitialized variable (GetDisplacedPosition)",
                         "location": "test.hlsl:52",
-                        "context": {
-                            "shader_type": "PSHADER",
-                            "entry_point": "main:1234"
-                        }
+                        "context": {"shader_type": "PSHADER", "entry_point": "main:1234"},
                     }
                 ]
             },
             "entries": ["main:1234"],
-            "type": "PSHADER"
+            "type": "PSHADER",
         }
     }
 
@@ -853,7 +847,7 @@ float3 rgb = color.rgb;
     mock_log_new_issues.assert_called_once()
     call_args = mock_log_new_issues.call_args[0]
     result = call_args[2][0]  # Get the first result
-    
+
     # Verify the log contains the full context
     assert "// Previous line" in result["log"]
     assert "float4 color = float4(1.0, 2.0, 3.0, 4.0);" in result["log"]
@@ -906,7 +900,7 @@ float3 rgb = color.rgb;""",
                 }
             },
             "entries": ["test.hlsl:main:1234"],
-        }
+        },
     ]
 
     # Setup mock return values
@@ -921,12 +915,12 @@ float3 rgb = color.rgb;""",
     mock_log_new_issues.assert_called_once()
     call_args = mock_log_new_issues.call_args[0]
     warnings = call_args[0]
-    
+
     # Verify both warnings are present
     assert len(warnings) == 2
     assert warnings[0]["code"] == "X3206"
     assert warnings[1]["code"] == "X3557"
-    
+
     # Verify both warnings reference the same location
     assert "test.hlsl:30" in warnings[0]["instances"]
     assert "test.hlsl:30" in warnings[1]["instances"]
@@ -970,34 +964,32 @@ test.hlsl(53): error X4000: use of potentially uninitialized variable (GetDispla
 float4 finalPos = GetDisplacedPosition(input.pos);""",
             "success": False,
             "cmd": [],
-        }
+        },
     ]
 
     # Setup mock errors with context information
     errors = {
         "test.hlsl:main:1234": {
             "instances": {
-                "test.hlsl:52": [{
-                    "code": "X4000",
-                    "message": "use of potentially uninitialized variable (GetDisplacedPosition)",
-                    "location": "test.hlsl:52",
-                    "context": {
-                        "shader_type": "PSHADER",
-                        "entry_point": "main:1234"
+                "test.hlsl:52": [
+                    {
+                        "code": "X4000",
+                        "message": "use of potentially uninitialized variable (GetDisplacedPosition)",
+                        "location": "test.hlsl:52",
+                        "context": {"shader_type": "PSHADER", "entry_point": "main:1234"},
                     }
-                }],
-                "test.hlsl:53": [{
-                    "code": "X4000",
-                    "message": "use of potentially uninitialized variable (GetDisplacedPosition)",
-                    "location": "test.hlsl:53",
-                    "context": {
-                        "shader_type": "PSHADER",
-                        "entry_point": "main:1234"
+                ],
+                "test.hlsl:53": [
+                    {
+                        "code": "X4000",
+                        "message": "use of potentially uninitialized variable (GetDisplacedPosition)",
+                        "location": "test.hlsl:53",
+                        "context": {"shader_type": "PSHADER", "entry_point": "main:1234"},
                     }
-                }]
+                ],
             },
             "entries": ["main:1234"],
-            "type": "PSHADER"
+            "type": "PSHADER",
         }
     }
 
@@ -1008,11 +1000,7 @@ float4 finalPos = GetDisplacedPosition(input.pos);""",
 
     # Call the function under test
     exit_code, total_warnings, error_count = analyze_and_report_results(
-        results=results,
-        config_file="test.yaml",
-        output_dir="output",
-        suppress_warnings=[],
-        max_warnings=0
+        results=results, config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=0
     )
 
     # Verify results
@@ -1035,113 +1023,189 @@ float4 finalPos = GetDisplacedPosition(input.pos);""",
         assert error_instance["context"]["shader_type"] == "PSHADER"
         assert error_instance["context"]["entry_point"] == "main:1234"
 
+
 def test_issue_handler_base_class():
     """Test the base IssueHandler class functionality."""
-    result = {
-        "file": "/path/to/test.hlsl",
-        "entry": "main",
-        "type": "PSHADER"
-    }
-    
+    result = {"file": "/path/to/test.hlsl", "entry": "main", "type": "PSHADER"}
+
     handler = IssueHandler(result)
-    
+
     # Test location normalization
     location = handler.normalize_location("/path/to/test.hlsl", "10")
     assert location == "/path/to/test.hlsl:10"
-    
+
     # Test issue data creation
     issue_data = handler.create_issue_data("E1234", "Test error", location)
     assert issue_data == {
         "code": "E1234",
         "message": "Test error",
         "location": location,
-        "context": {
-            "shader_type": "PSHADER",
-            "entry_point": "main"
-        }
+        "context": {"shader_type": "PSHADER", "entry_point": "main"},
     }
-    
+
     # Test instance tracking
     instances = {}
     handler.add_to_instances(instances, location, issue_data)
     assert location in instances
     assert len(instances[location]) == 1
     assert instances[location][0] == issue_data
-    
+
     # Test duplicate prevention
     handler.add_to_instances(instances, location, issue_data)
     assert len(instances[location]) == 1  # Should not add duplicate
 
+
 def test_warning_handler():
     """Test the WarningHandler class functionality."""
-    result = {
-        "file": "/path/to/test.hlsl",
-        "entry": "main",
-        "type": "PSHADER"
-    }
-    
+    result = {"file": "/path/to/test.hlsl", "entry": "main", "type": "PSHADER"}
+
     handler = WarningHandler(result)
     baseline_warnings = {}
     suppress_warnings = []
     all_warnings = {}
     new_warnings_dict = {}
     suppressed_count = 0
-    
+
     # Test warning processing
     warning_line = "test.hlsl(10): warning X1234: Test warning"
     all_warnings, new_warnings_dict, suppressed_count = handler.process(
-        warning_line,
-        baseline_warnings,
-        suppress_warnings,
-        all_warnings,
-        new_warnings_dict,
-        suppressed_count
+        warning_line, baseline_warnings, suppress_warnings, all_warnings, new_warnings_dict, suppressed_count
     )
-    
+
     assert "x1234:test warning" in all_warnings
     assert len(new_warnings_dict) == 1
     assert suppressed_count == 0
-    
+
     # Test warning suppression
     suppress_warnings = ["X1234"]
     suppress_warnings = [code.lower() for code in suppress_warnings]
     all_warnings = {}
     new_warnings_dict = {}
     suppressed_count = 0
-    
+
     all_warnings, new_warnings_dict, suppressed_count = handler.process(
-        warning_line,
-        baseline_warnings,
-        suppress_warnings,
-        all_warnings,
-        new_warnings_dict,
-        suppressed_count
+        warning_line, baseline_warnings, suppress_warnings, all_warnings, new_warnings_dict, suppressed_count
     )
-    
+
     assert "x1234:test warning" not in all_warnings
     assert len(new_warnings_dict) == 0
     assert suppressed_count == 1
 
+
 def test_error_handler():
     """Test the ErrorHandler class functionality."""
-    result = {
-        "file": "/path/to/test.hlsl",
-        "entry": "main",
-        "type": "PSHADER"
-    }
-    
+    result = {"file": "/path/to/test.hlsl", "entry": "main", "type": "PSHADER"}
+
     handler = ErrorHandler(result)
     errors = {}
-    
+
     # Test error processing
     error_line = "test.hlsl(10): error E1234: Test error"
     errors = handler.process(error_line, errors)
-    
+
     assert "test.hlsl:main" in errors
     assert len(errors["test.hlsl:main"]["instances"]) == 1
     assert "test.hlsl:10" in errors["test.hlsl:main"]["instances"]
     assert len(errors["test.hlsl:main"]["instances"]["test.hlsl:10"]) == 1
-    
+
     # Test duplicate prevention
     errors = handler.process(error_line, errors)
     assert len(errors["test.hlsl:main"]["instances"]["test.hlsl:10"]) == 1
+
+
+def test_file_issue_summary():
+    """Test file-level issue summary generation."""
+    baseline_warnings = {
+        "x3206:implicit truncation": {
+            "code": "X3206",
+            "message": "implicit truncation",
+            "instances": {
+                "water.hlsl:1050,2-73": {"entries": ["main:1234"]},
+                "lighting.hlsl:200,5": {"entries": ["main:5678"]},
+            },
+        }
+    }
+
+    new_warnings = [
+        {
+            "code": "X3206",
+            "message": "implicit truncation",
+            "instances": {
+                "water.hlsl:1050,2-73": {"entries": ["main:1234", "main:5678"]},
+                "effects.hlsl:50,10": {"entries": ["main:9012"]},
+            },
+        }
+    ]
+
+    summary = get_file_issue_summary(baseline_warnings, new_warnings)
+
+    # Verify water.hlsl has new issues (same location but more entries)
+    assert "water.hlsl" in summary
+    assert summary["water.hlsl"]["new"] > 0
+    assert summary["water.hlsl"]["baseline"] > 0
+
+    # Verify effects.hlsl has new issues
+    assert "effects.hlsl" in summary
+    assert summary["effects.hlsl"]["new"] > 0
+    assert summary["effects.hlsl"]["baseline"] == 0
+
+    # Verify lighting.hlsl has no new issues
+    assert "lighting.hlsl" not in summary
+
+
+def test_file_issue_summary_no_changes():
+    """Test file-level issue summary when there are no new issues."""
+    baseline_warnings = {
+        "x3206:implicit truncation": {
+            "code": "X3206",
+            "message": "implicit truncation",
+            "instances": {"water.hlsl:1050,2-73": {"entries": ["main:1234"]}},
+        }
+    }
+
+    new_warnings = [
+        {
+            "code": "X3206",
+            "message": "implicit truncation",
+            "instances": {"water.hlsl:1050,2-73": {"entries": ["main:1234"]}},
+        }
+    ]
+
+    summary = get_file_issue_summary(baseline_warnings, new_warnings)
+
+    # Verify no files are reported when there are no new issues
+    assert len(summary) == 0
+
+
+def test_file_issue_summary_yaml_style():
+    """Test file-level issue summary with YAML-style paths."""
+    baseline_warnings = {
+        "x3571:pow(f, e) will not work for negative f": {
+            "code": "X3571",
+            "message": "pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them",
+            "instances": {"common/color.hlsli:58,10-24": {"entries": ["main:1234"]}},
+        }
+    }
+
+    new_warnings = [
+        {
+            "code": "X3571",
+            "message": "pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them",
+            "instances": {
+                "common/color.hlsli:58,10-24": {"entries": ["main:1234", "main:5678"]},
+                "common/lighting.hlsli:100,5": {"entries": ["main:9012"]},
+            },
+        }
+    ]
+
+    summary = get_file_issue_summary(baseline_warnings, new_warnings)
+
+    # Verify common/color.hlsli has new issues (same location but more entries)
+    assert "common/color.hlsli" in summary
+    assert summary["common/color.hlsli"]["new"] > 0
+    assert summary["common/color.hlsli"]["baseline"] > 0
+
+    # Verify common/lighting.hlsli has new issues
+    assert "common/lighting.hlsli" in summary
+    assert summary["common/lighting.hlsli"]["new"] > 0
+    assert summary["common/lighting.hlsli"]["baseline"] == 0

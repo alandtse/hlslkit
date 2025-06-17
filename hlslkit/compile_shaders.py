@@ -30,7 +30,6 @@ import time
 from collections import deque
 from datetime import datetime
 from types import FrameType
-from typing import Any
 
 import yaml
 from tqdm import tqdm
@@ -61,25 +60,33 @@ except ImportError:
 def normalize_path(file_path: str) -> str:
     """Normalize a file path by standardizing separators and extracting relative path.
 
+    This function ensures paths are consistent across platforms by:
+    1. Converting backslashes to forward slashes
+    2. Removing duplicate slashes
+    3. Extracting the path after the last occurrence of 'Shaders/' (case-insensitive)
+       If no 'Shaders/' is found, returns the path as-is with normalized separators.
+
     Args:
         file_path (str): The file path to normalize.
 
     Returns:
-        str: The normalized file path, relative to the Shaders directory if present.
+        str: The normalized file path, with the 'Shaders/' prefix removed if present.
 
     Example:
         >>> normalize_path("C:/Projects/Shaders/src/test.hlsl")
         'src/test.hlsl'
+        >>> normalize_path("C:/Projects/src/test.hlsl")
+        'C:/Projects/src/test.hlsl'
     """
     file_path = file_path.replace("\\", "/")
     file_path = re.sub(r"/+", "/", file_path)
-    pattern = r"(?i).*?\bShaders[/](.*)"
-    match = re.search(pattern, file_path)
-    if match:
-        norm_path = match.group(1).replace("\\", "/")
+    # Find the last occurrence of 'Shaders/' (case-insensitive)
+    parts = re.split(r"(?i)Shaders/", file_path)
+    if len(parts) > 1:
+        norm_path = parts[-1]
         logging.debug(f"Normalized path (Shaders found): {file_path} -> {norm_path}")
         return norm_path
-    norm_path = file_path.replace("\\", "/")
+    norm_path = file_path
     logging.debug(f"Normalized path (no Shaders, using as-is): {file_path} -> {norm_path}")
     return norm_path
 
@@ -172,8 +179,8 @@ def compile_shader(
     strip_debug_defines: bool = False,
     optimization_level: str = "1",
     force_partial_precision: bool = False,
-    debug_defines: set = None,
-) -> dict[str, Any]:
+    debug_defines: set[str] | None = None,
+) -> dict[str, object]:
     """Compile a shader using fxc.exe.
 
     Args:
@@ -430,16 +437,13 @@ def build_defines_lookup(config_file: str) -> dict:
 
 class IssueHandler:
     """Base class for handling compilation issues (warnings and errors)."""
-    
+
     def __init__(self, result: dict):
         self.result = result
-        self.file_name = os.path.basename(result['file'])
+        self.file_name = os.path.basename(result["file"])
         self.shader_key = f"{self.file_name}:{result['entry']}"
         self.shader_key_lower = self.shader_key.lower()
-        self.context = {
-            "shader_type": result["type"],
-            "entry_point": result["entry"]
-        }
+        self.context = {"shader_type": result["type"], "entry_point": result["entry"]}
 
     def normalize_location(self, file_path: str, line_info: str) -> str:
         """Normalize file path and create location string."""
@@ -448,27 +452,30 @@ class IssueHandler:
 
     def create_issue_data(self, code: str, message: str, location: str) -> dict:
         """Create a standardized issue data structure."""
-        return {
-            "code": code,
-            "message": message,
-            "location": location,
-            "context": self.context.copy()
-        }
+        return {"code": code, "message": message, "location": location, "context": self.context.copy()}
 
     def add_to_instances(self, instances: dict, location: str, issue_data: dict) -> None:
         """Add an issue to the instances dictionary."""
         if location not in instances:
             instances[location] = []
-        if not any(i["code"] == issue_data["code"] and i["message"] == issue_data["message"] 
-                  for i in instances[location]):
+        if not any(
+            i["code"] == issue_data["code"] and i["message"] == issue_data["message"] for i in instances[location]
+        ):
             instances[location].append(issue_data)
 
 
 class WarningHandler(IssueHandler):
     """Handler for compilation warnings."""
-    
-    def process(self, line: str, baseline_warnings: dict, suppress_warnings: list[str],
-                all_warnings: dict, new_warnings_dict: dict, suppressed_count: int) -> tuple[dict, dict, int]:
+
+    def process(
+        self,
+        line: str,
+        baseline_warnings: dict,
+        suppress_warnings: list[str],
+        all_warnings: dict,
+        new_warnings_dict: dict,
+        suppressed_count: int,
+    ) -> tuple[dict, dict, int]:
         """Process a warning line."""
         warning_match = re.match(WARNING_REGEX, line)
         if not warning_match:
@@ -487,11 +494,7 @@ class WarningHandler(IssueHandler):
         context_warning_key = f"{warning_key}:{self.context['shader_type']}:{self.context['entry_point']}"
 
         if warning_key not in all_warnings:
-            all_warnings[warning_key] = {
-                "code": warning_code,
-                "message": warning_msg,
-                "instances": {}
-            }
+            all_warnings[warning_key] = {"code": warning_code, "message": warning_msg, "instances": {}}
 
         if location not in all_warnings[warning_key]["instances"]:
             all_warnings[warning_key]["instances"][location] = {"entries": []}
@@ -503,12 +506,14 @@ class WarningHandler(IssueHandler):
         if warning_key in baseline_warnings:
             baseline_data = baseline_warnings[warning_key]
             baseline_count = sum(
-                1 for baseline_loc, baseline_instance in baseline_data["instances"].items()
+                1
+                for baseline_loc, baseline_instance in baseline_data["instances"].items()
                 if self.context["entry_point"].lower() in [e.lower() for e in baseline_instance.get("entries", [])]
             )
             if baseline_count > 0:
                 current_count = sum(
-                    1 for loc, inst in all_warnings[warning_key]["instances"].items()
+                    1
+                    for loc, inst in all_warnings[warning_key]["instances"].items()
                     if self.context["entry_point"].lower() in [e.lower() for e in inst.get("entries", [])]
                 )
                 is_new_warning = current_count > baseline_count
@@ -524,7 +529,7 @@ class WarningHandler(IssueHandler):
                     "message": warning_msg,
                     "example": warning_str,
                     "entries": [],
-                    "instances": {}
+                    "instances": {},
                 }
             if self.shader_key not in new_warnings_dict[warning_id]["entries"]:
                 new_warnings_dict[warning_id]["entries"].append(self.shader_key)
@@ -539,7 +544,7 @@ class WarningHandler(IssueHandler):
 
 class ErrorHandler(IssueHandler):
     """Handler for compilation errors."""
-    
+
     def process(self, line: str, errors: dict) -> dict:
         """Process an error line."""
         error_match = re.match(ERROR_REGEX, line)
@@ -550,15 +555,11 @@ class ErrorHandler(IssueHandler):
         location = self.normalize_location(file_path, line_info)
 
         if self.shader_key_lower not in errors:
-            errors[self.shader_key_lower] = {
-                "instances": {},
-                "entries": [],
-                "type": self.context["shader_type"]
-            }
+            errors[self.shader_key_lower] = {"instances": {}, "entries": [], "type": self.context["shader_type"]}
 
         error_data = self.create_issue_data(error_code, error_msg, location)
         self.add_to_instances(errors[self.shader_key_lower]["instances"], location, error_data)
-        
+
         if self.context["entry_point"] not in errors[self.shader_key_lower]["entries"]:
             errors[self.shader_key_lower]["entries"].append(self.context["entry_point"])
 
@@ -576,7 +577,9 @@ def process_single_warning(
 ) -> tuple[dict, dict, int]:
     """Process a single warning line from compilation output."""
     handler = WarningHandler(result)
-    return handler.process(line, baseline_warnings, suppress_warnings, all_warnings, new_warnings_dict, suppressed_warnings_count)
+    return handler.process(
+        line, baseline_warnings, suppress_warnings, all_warnings, new_warnings_dict, suppressed_warnings_count
+    )
 
 
 def process_single_error(line: str, result: dict, errors: dict) -> dict:
@@ -692,7 +695,9 @@ def log_new_issues(
                     issue_logger.info(f"    Error Code: {error['code']}")
                     issue_logger.info(f"    Message: {error['message']}")
                     if error.get("context"):
-                        issue_logger.info(f"    Context: {error['context']['shader_type']} - {error['context']['entry_point']}")
+                        issue_logger.info(
+                            f"    Context: {error['context']['shader_type']} - {error['context']['entry_point']}"
+                        )
                     issue_logger.info("")
 
             issue_logger.info("=" * 40)
@@ -765,7 +770,7 @@ def log_new_issues(
     issue_logger.removeHandler(issue_handler)
 
 
-def parse_args_for_defaults() -> dict[str, Any]:
+def parse_args_for_defaults() -> dict[str, object]:
     """Parse command-line arguments to extract default values.
 
     Returns:
@@ -971,8 +976,7 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
     parser.add_argument(
         "--debug-defines",
         default=defaults.get(
-            "debug-defines",
-            "DEBUG,_DEBUG,D3D_DEBUG_INFO,D3DCOMPILE_DEBUG,D3DCOMPILE_SKIP_OPTIMIZATION"
+            "debug-defines", "DEBUG,_DEBUG,D3D_DEBUG_INFO,D3DCOMPILE_DEBUG,D3DCOMPILE_SKIP_OPTIMIZATION"
         ),
         help="Comma-separated list of defines to treat as debug (default: common debug defines)",
     )
@@ -1143,13 +1147,13 @@ def manage_jobs(
 
 def submit_tasks(
     executor: concurrent.futures.ThreadPoolExecutor,
-    task_iterator: Any,  # Iterator cannot be typed precisely without collections.abc
+    task_iterator: object,  # Iterator cannot be typed precisely without collections.abc
     active_tasks: int,
     target_jobs: int,
     args: argparse.Namespace,
     futures: dict,
     shader_dir: str,
-) -> tuple[int, Any]:
+) -> tuple[int, object]:
     """Submit compilation tasks to the executor.
 
     Args:
@@ -1317,6 +1321,63 @@ def run_compilation(args: argparse.Namespace, cpu_count: int, physical_cores: in
     return results
 
 
+def get_file_issue_summary(baseline_warnings: dict, new_warnings: list[dict]) -> dict:
+    """Generate a summary of issue changes per file, only counting truly new issues. Handles both dict and list formats for 'instances'."""
+    file_summary = {}
+
+    # Build a set of (file_path, location, entry) for baseline
+    baseline_set = set()
+    for warning_data in baseline_warnings.values():
+        instances = warning_data.get("instances", {})
+        if isinstance(instances, dict):
+            for _location, loc_data in instances.items():
+                file_path = _location.split(":")[0]
+                for _entry in loc_data.get("entries", []):
+                    baseline_set.add((file_path, _location, _entry))
+        elif isinstance(instances, list):
+            for _location in instances:
+                file_path = _location.split(":")[0]
+                baseline_set.add((file_path, _location, None))
+
+    # Build a set of (file_path, location, entry) for new_warnings
+    new_set = set()
+    for warning in new_warnings:
+        instances = warning.get("instances", {})
+        if isinstance(instances, dict):
+            for _location, loc_data in instances.items():
+                file_path = _location.split(":")[0]
+                for _entry in loc_data.get("entries", []):
+                    new_set.add((file_path, _location, _entry))
+        elif isinstance(instances, list):
+            for _location in instances:
+                file_path = _location.split(":")[0]
+                # Use entries from warning['entries'] if available, else None
+                entries = warning.get("entries", [None])
+                for _entry in entries:
+                    new_set.add((file_path, _location, _entry))
+
+    # Only count as new if not in baseline
+    truly_new = new_set - baseline_set
+
+    # Count baseline and new per file
+    for file_path, _location, _entry in baseline_set:
+        if file_path not in file_summary:
+            file_summary[file_path] = {"baseline": 0, "new": 0, "total": 0}
+        file_summary[file_path]["baseline"] += 1
+        file_summary[file_path]["total"] += 1
+    for file_path, _location, _entry in new_set:
+        if file_path not in file_summary:
+            file_summary[file_path] = {"baseline": 0, "new": 0, "total": 0}
+        file_summary[file_path]["total"] += 1
+    for file_path, _location, _entry in truly_new:
+        if file_path not in file_summary:
+            file_summary[file_path] = {"baseline": 0, "new": 0, "total": 0}
+        file_summary[file_path]["new"] += 1
+
+    # Only report files with truly new issues
+    return {k: v for k, v in file_summary.items() if v["new"] > 0}
+
+
 def analyze_and_report_results(
     results: list[dict],
     config_file: str,
@@ -1347,26 +1408,34 @@ def analyze_and_report_results(
     logging.info(
         f"Compilation complete: {total_new_warnings} new warnings, {suppressed_warnings_count} suppressed warnings, {len(errors)} errors"
     )
+
+    # Generate and log file-level summary
+    file_summary = get_file_issue_summary(baseline_warnings, new_warnings)
+    if file_summary:
+        logging.warning("\n*** FILE-LEVEL ISSUE SUMMARY:")
+        for file_path, stats in sorted(file_summary.items(), key=lambda x: x[1]["new"], reverse=True):
+            logging.warning(
+                f"  {file_path}: {stats['new']} new issues " f"(baseline: {stats['baseline']}, total: {stats['total']})"
+            )
+        logging.warning("")
+
     if new_warnings:
         unique_warnings = sorted(new_warnings, key=lambda x: get_instance_count(x), reverse=True)
-        max_to_show = min(10, len(unique_warnings))  # Show more warnings for better visibility
+        max_to_show = min(10, len(unique_warnings))
         logging.warning(f"*** NEW WARNINGS DETECTED ({len(unique_warnings)} unique, {total_new_warnings} total):")
         for i, warning in enumerate(unique_warnings[:max_to_show], 1):
             count = get_instance_count(warning)
             affected_variants = len(warning["entries"])
             percentage = (count / total_new_warnings * 100) if total_new_warnings > 0 else 0
 
-            # Enhanced warning display with specific locations
             logging.warning(f"\n{i}. {warning['code']}: {warning['message']}")
             logging.warning(
                 f"   Impact: {count} occurrences across {affected_variants} shader variants ({percentage:.1f}%)"
-            )  # Show specific file locations and line numbers
+            )
             locations_shown = 0
-            max_locations = 3  # Show up to 3 specific locations per warning
+            max_locations = 3
 
-            # Handle both list and dictionary formats for instances
             if isinstance(warning["instances"], dict):
-                # Dictionary format: {"location": {"entries": [...]}}
                 for location, location_data in warning["instances"].items():
                     if locations_shown >= max_locations:
                         remaining_locations = len(warning["instances"]) - locations_shown
@@ -1375,12 +1444,10 @@ def analyze_and_report_results(
                         )
                         break
 
-                    # Parse file and line info for better display
                     file_part = location.split(":")[0] if ":" in location else location
                     line_part = ":".join(location.split(":")[1:]) if ":" in location else "unknown"
 
-                    # Show affected shader entries for this location
-                    entries_list = list(location_data["entries"])[:2]  # Show first 2 entries
+                    entries_list = list(location_data["entries"])[:2]
                     entries_str = ", ".join(entries_list)
                     if len(location_data["entries"]) > 2:
                         entries_str += f" (+{len(location_data['entries']) - 2} more)"
@@ -1388,7 +1455,6 @@ def analyze_and_report_results(
                     logging.warning(f"   Location: {file_part}:{line_part} (entries: {entries_str})")
                     locations_shown += 1
             else:
-                # List format: ["location1", "location2", ...] (for backward compatibility)
                 for location in warning["instances"][:max_locations]:
                     file_part = location.split(":")[0] if ":" in location else location
                     line_part = ":".join(location.split(":")[1:]) if ":" in location else "unknown"
@@ -1422,7 +1488,9 @@ def analyze_and_report_results(
                     if error.get("location"):
                         logging.error(f"      Location: {error['location']}")
                     if error.get("context"):
-                        logging.error(f"      Context: {error['context']['shader_type']} - {error['context']['entry_point']}")
+                        logging.error(
+                            f"      Context: {error['context']['shader_type']} - {error['context']['entry_point']}"
+                        )
 
         logging.error("\nACTION REQUIRED: Fix all compilation errors above before proceeding.")
         logging.error("Check the full compilation log for additional context and details.")
