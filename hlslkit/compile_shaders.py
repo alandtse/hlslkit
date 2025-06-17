@@ -63,25 +63,27 @@ def normalize_path(file_path: str) -> str:
     This function ensures paths are consistent across platforms by:
     1. Converting backslashes to forward slashes
     2. Removing duplicate slashes
-    3. Extracting the path after the last occurrence of 'Shaders/' (case-insensitive)
-       If no 'Shaders/' is found, returns the path as-is with normalized separators.
+    3. Extracting the path after the last occurrence of 'Shaders/' or 'Shaders' (case-insensitive)
+       If no 'Shaders' is found, returns the path as-is with normalized separators.
 
     Args:
         file_path (str): The file path to normalize.
 
     Returns:
-        str: The normalized file path, with the 'Shaders/' prefix removed if present.
+        str: The normalized file path, with the 'Shaders' prefix removed if present.
 
     Example:
         >>> normalize_path("C:/Projects/Shaders/src/test.hlsl")
         'src/test.hlsl'
+        >>> normalize_path("C:/Projects/Shaders")
+        ''
         >>> normalize_path("C:/Projects/src/test.hlsl")
         'C:/Projects/src/test.hlsl'
     """
     file_path = file_path.replace("\\", "/")
     file_path = re.sub(r"/+", "/", file_path)
-    # Find the last occurrence of 'Shaders/' (case-insensitive)
-    parts = re.split(r"(?i)Shaders/", file_path)
+    # Find the last occurrence of 'Shaders' (case-insensitive) with optional trailing slash
+    parts = re.split(r"(?i)Shaders(?:/|$)", file_path)
     if len(parts) > 1:
         norm_path = parts[-1]
         logging.debug(f"Normalized path (Shaders found): {file_path} -> {norm_path}")
@@ -195,7 +197,7 @@ def compile_shader(
         strip_debug_defines (bool): Strip debug-related defines.
         optimization_level (str): Optimization level (0-3).
         force_partial_precision (bool): Force 16-bit precision.
-        debug_defines (Optional[set[str]]): Set of debug defines to strip.
+        debug_defines (set[str] | None): Set of debug defines to strip.
 
     Returns:
         dict[str, any]: Compilation result with file, entry, type, log, success, and command.
@@ -509,17 +511,26 @@ class WarningHandler(IssueHandler):
         is_new_warning = True
         if warning_key in baseline_warnings:
             baseline_data = baseline_warnings[warning_key]
-            baseline_count = sum(
-                1
-                for baseline_loc, baseline_instance in baseline_data["instances"].items()
-                if self.context["entry_point"].lower() in [e.lower() for e in baseline_instance.get("entries", [])]
-            )
-            if baseline_count > 0:
-                current_count = sum(
+            instances = baseline_data.get("instances", {})
+            if isinstance(instances, dict):
+                baseline_count = sum(
                     1
-                    for loc, inst in all_warnings[warning_key]["instances"].items()
-                    if self.context["entry_point"].lower() in [e.lower() for e in inst.get("entries", [])]
+                    for _loc, _inst in instances.items()
+                    if self.context["entry_point"].lower() in [e.lower() for e in _inst.get("entries", [])]
                 )
+            else:  # legacy list format - count every occurrence
+                baseline_count = len(instances)
+
+            if baseline_count > 0:
+                current_instances = all_warnings[warning_key]["instances"]
+                if isinstance(current_instances, dict):
+                    current_count = sum(
+                        1
+                        for _loc, _inst in current_instances.items()
+                        if self.context["entry_point"].lower() in [e.lower() for e in _inst.get("entries", [])]
+                    )
+                else:  # legacy list format - count every occurrence
+                    current_count = len(current_instances)
                 is_new_warning = current_count > baseline_count
 
         if is_new_warning:
@@ -986,7 +997,15 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
     )
     if not is_gui_mode:
         parser.add_argument("-g", "--gui", action="store_true", help="Run with GUI")
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    # Pre-compute debug defines set to avoid repeated parsing
+    if args.debug_defines and args.debug_defines.strip():
+        args.debug_defines_set = {d.strip().upper() for d in args.debug_defines.split(",") if d.strip()} or None
+    else:
+        args.debug_defines_set = None
+
+    return args
 
 
 def setup_environment(args: argparse.Namespace) -> tuple[int, int | None, bool]:
@@ -1188,7 +1207,7 @@ def submit_tasks(
                 args.strip_debug_defines,
                 args.optimization_level,
                 args.force_partial_precision,
-                {d.strip().upper() for d in args.debug_defines.split(",")} if args.debug_defines else None,
+                args.debug_defines_set,
             )
             futures[future] = task
             active_tasks += 1

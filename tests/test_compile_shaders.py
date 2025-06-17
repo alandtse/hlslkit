@@ -1,4 +1,5 @@
 import shutil
+import sys
 from subprocess import TimeoutExpired  # Added for TimeoutExpired
 from unittest.mock import MagicMock, patch
 
@@ -14,6 +15,7 @@ from hlslkit.compile_shaders import (
     flatten_defines,
     get_file_issue_summary,
     normalize_path,
+    parse_arguments,
     parse_shader_configs,
 )
 
@@ -55,6 +57,14 @@ def test_normalize_path_yaml_style():
     assert normalize_path("shaders/common/color.hlsli") == "common/color.hlsli"
     assert normalize_path("Shaders/common/color.hlsli") == "common/color.hlsli"
     assert normalize_path("C:/Projects/Shaders/common/color.hlsli") == "common/color.hlsli"
+
+
+def test_normalize_path_ending_in_shaders():
+    """Test normalize_path with a path ending in 'Shaders' (no trailing slash)."""
+    assert normalize_path("C:/Game/Content/Shaders") == ""
+    assert normalize_path("C:/Game/Content/Shaders/") == ""
+    assert normalize_path("Shaders") == ""
+    assert normalize_path("Shaders/") == ""
 
 
 def test_flatten_defines():
@@ -1209,3 +1219,49 @@ def test_file_issue_summary_yaml_style():
     assert "common/lighting.hlsli" in summary
     assert summary["common/lighting.hlsli"]["new"] > 0
     assert summary["common/lighting.hlsli"]["baseline"] == 0
+
+
+def test_parse_arguments_debug_defines_empty_and_stray_comma():
+    """Test parse_arguments for debug-defines handling of empty string and stray comma."""
+    test_argv = ["prog", "--debug-defines", ""]
+    with patch.object(sys, "argv", test_argv):
+        args = parse_arguments(default_jobs=4)
+        assert args.debug_defines_set is None
+
+    test_argv = ["prog", "--debug-defines", "DEBUG,"]
+    with patch.object(sys, "argv", test_argv):
+        args = parse_arguments(default_jobs=4)
+        assert args.debug_defines_set == {"DEBUG"}
+
+    test_argv = ["prog", "--debug-defines", "DEBUG, ,FOO,,"]
+    with patch.object(sys, "argv", test_argv):
+        args = parse_arguments(default_jobs=4)
+        assert args.debug_defines_set == {"DEBUG", "FOO"}
+
+
+def test_warning_handler_with_list_format_baseline():
+    """Test WarningHandler.process with a baseline warning whose 'instances' is a list (legacy format)."""
+    result = {"file": "test.hlsl", "entry": "main", "type": "PSHADER"}
+    handler = WarningHandler(result)
+    # Simulate a warning line
+    warning_line = "test.hlsl(10): warning X1234: Test warning"
+    # Baseline warning with 'instances' as a list
+    baseline_warnings = {
+        "x1234:test warning": {
+            "code": "X1234",
+            "message": "Test warning",
+            "instances": ["test.hlsl:10", "test.hlsl:20"],
+        }
+    }
+    suppress_warnings = []
+    all_warnings = {}
+    new_warnings_dict = {}
+    suppressed_count = 0
+    # Should not raise AttributeError and should process correctly
+    all_warnings, new_warnings_dict, suppressed_count = handler.process(
+        warning_line, baseline_warnings, suppress_warnings, all_warnings, new_warnings_dict, suppressed_count
+    )
+    # The warning should be present in all_warnings
+    assert "x1234:test warning" in all_warnings
+    # The new_warnings_dict should be empty because the warning is not new (already in baseline)
+    assert isinstance(new_warnings_dict, dict)
