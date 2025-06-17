@@ -681,7 +681,7 @@ def log_new_issues(
         issue_logger.info("")
 
         for shader_key, error_data in errors.items():
-            shader_file = shader_key.split(":")[0]
+            shader_file = normalize_path(shader_key.split(":")[0])
             entry_point = ":".join(shader_key.split(":")[1:]) if ":" in shader_key else "unknown"
             shader_type = error_data.get("type", "unknown")
 
@@ -731,7 +731,7 @@ def log_new_issues(
 
                 # Show the actual compilation output for this location
                 for result in results:
-                    shader_key = f"{os.path.basename(result['file'])}:{result['entry']}"
+                    shader_key = f"{normalize_path(os.path.basename(result['file']))}:{result['entry']}"
                     if shader_key in location_data["entries"]:
                         if result.get("log"):
                             log_lines = result["log"].splitlines()
@@ -1477,7 +1477,7 @@ def analyze_and_report_results(
         logging.error(f"*** COMPILATION ERRORS DETECTED ({error_count} total errors):")
 
         for shader_key, error_data in errors.items():
-            shader_file = shader_key.split(":")[0]
+            shader_file = normalize_path(shader_key.split(":")[0])
             entry_point = ":".join(shader_key.split(":")[1:]) if ":" in shader_key else "unknown"
             shader_type = error_data.get("type", "unknown")
 
