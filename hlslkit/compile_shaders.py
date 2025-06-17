@@ -1184,7 +1184,7 @@ def submit_tasks(
                 args.strip_debug_defines,
                 args.optimization_level,
                 args.force_partial_precision,
-                args.debug_defines,
+                {d.strip().upper() for d in args.debug_defines.split(",")} if args.debug_defines else None,
             )
             futures[future] = task
             active_tasks += 1
