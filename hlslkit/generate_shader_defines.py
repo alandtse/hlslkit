@@ -499,14 +499,81 @@ def generate_yaml_data(shader_configs: dict, warnings: dict, errors: dict) -> di
     return yaml_data
 
 
+def make_hashable(obj):
+    if isinstance(obj, list):
+        return tuple(make_hashable(x) for x in obj)
+    elif isinstance(obj, dict):
+        return tuple(sorted((k, make_hashable(v)) for k, v in obj.items()))
+    else:
+        return obj
+
+
+def deduplicate_lists(obj, memo=None):
+    """Recursively deduplicate all equal lists in a data structure, replacing them with a shared object."""
+    if memo is None:
+        memo = {}
+    if isinstance(obj, list):
+        key = make_hashable(obj)
+        if key in memo:
+            return memo[key]
+        # Deduplicate elements recursively
+        deduped = [deduplicate_lists(x, memo) if isinstance(x, (list, dict)) else x for x in obj]
+        memo[key] = deduped
+        return deduped
+    elif isinstance(obj, dict):
+        return {k: deduplicate_lists(v, memo) if isinstance(v, (list, dict)) else v for k, v in obj.items()}
+    else:
+        return obj
+
+
 def save_yaml(yaml_data: dict, output_file: str) -> None:
-    """Save the YAML data to a file.
+    """Save the YAML data to a file, using anchors for repeated lists to reduce repetition.
+    Automatically deduplicates all equal lists so anchors are maximally used.
     Args:
-    yaml_data (dict): YAML data to save.
-    output_file (str): Path to the output YAML file.
+        yaml_data (dict): YAML data to save.
+        output_file (str): Path to the output YAML file.
     """
+    from collections import defaultdict
+
+    class AnchorDumper(yaml.SafeDumper):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._list_id_to_anchor = {}
+            self._anchor_counts = defaultdict(int)
+
+        def ignore_aliases(self, data):
+            # Only use anchors for lists (not dicts or scalars)
+            return not isinstance(data, list)
+
+        def represent_sequence(self, tag, sequence, flow_style=None):
+            # Use anchors for repeated lists
+            list_id = id(sequence)
+            if list_id in self._list_id_to_anchor:
+                anchor = self._list_id_to_anchor[list_id]
+            else:
+                anchor = None
+                # Only anchor if this list is referenced more than once
+                for _k, v in self.represented_objects.items():
+                    if v is sequence:
+                        self._anchor_counts[list_id] += 1
+                        if self._anchor_counts[list_id] == 2:
+                            anchor = f"id{list_id}"
+                            self._list_id_to_anchor[list_id] = anchor
+                        break
+            node = super().represent_sequence(tag, sequence, flow_style)
+            if anchor:
+                node.anchor = anchor  # type: ignore[attr-defined]
+            return node
+
+    deduped = deduplicate_lists(yaml_data)
     with open(output_file, "w", encoding="utf-8") as f:
-        yaml.safe_dump(yaml_data, f, sort_keys=False, allow_unicode=True)
+        yaml.dump(
+            deduped,
+            f,
+            Dumper=AnchorDumper,
+            sort_keys=False,
+            allow_unicode=True,
+        )
 
 
 def parse_arguments() -> argparse.Namespace:
