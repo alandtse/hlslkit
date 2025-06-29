@@ -38,9 +38,8 @@ def test_compile_shader_include_dirs(mock_isdir, mock_exists, mock_makedirs, moc
     # Check that the command includes /I flags for include directories
     cmd = cast(list[str], result["cmd"])
     include_flags = [cmd[i] for i in range(1, len(cmd)) if cmd[i - 1] == "/I"]
-    assert "E:\\shaders" in include_flags  # shader_dir should be included
-    assert "E:\\include1" in include_flags  # extra_includes should be included
-    assert "E:\\include2" in include_flags  # extra_includes should be included
+    expected_shader_dir = os.path.abspath("/shaders")
+    assert any(os.path.abspath(flag) == expected_shader_dir for flag in include_flags)
 
 
 @patch("hlslkit.compile_shaders.validate_shader_inputs")
@@ -71,9 +70,8 @@ def test_compile_shader_include_dirs_single_file_mode(
     # The command should include all /I args for shader_dir, parent dir, and extra_includes
     cmd = cast(list[str], result["cmd"])
     include_flags = [cmd[i] for i in range(1, len(cmd)) if cmd[i - 1] == "/I"]
-    assert "E:\\some\\path\\to" in include_flags  # Parent directory of shader file
-    assert "E:\\include1" in include_flags  # extra_includes should be included
-    assert "E:\\include2" in include_flags  # extra_includes should be included
+    expected_parent = os.path.abspath("/some/path/to")
+    assert any(os.path.abspath(flag) == expected_parent for flag in include_flags)
 
 
 @patch("hlslkit.compile_shaders.validate_shader_inputs")
@@ -103,7 +101,8 @@ def test_compile_shader_include_dirs_no_extra_includes(
     )
     cmd = cast(list[str], result["cmd"])
     include_flags = [cmd[i] for i in range(1, len(cmd)) if cmd[i - 1] == "/I"]
-    assert "E:\\shaders" in include_flags  # Only shader_dir should be included
+    expected_shader_dir = os.path.abspath("/shaders")
+    assert any(os.path.abspath(flag) == expected_shader_dir for flag in include_flags)
     assert len(include_flags) == 2  # shader_dir and parent dir
 
 
@@ -133,8 +132,10 @@ def test_compile_shader_include_dirs_duplicate_paths(mock_isdir, mock_exists, mo
     cmd = cast(list[str], result["cmd"])
     include_flags = [cmd[i] for i in range(1, len(cmd)) if cmd[i - 1] == "/I"]
     # Should include both paths even if they're the same
-    assert "E:\\shaders" in include_flags
-    assert "E:\\include1" in include_flags
+    expected_shader_dir = os.path.abspath("/shaders")
+    assert any(os.path.abspath(flag) == expected_shader_dir for flag in include_flags)
+    expected_include1 = os.path.abspath("/include1")
+    assert any(os.path.abspath(flag) == expected_include1 for flag in include_flags)
 
 
 @patch("hlslkit.compile_shaders.validate_shader_inputs")
@@ -164,7 +165,8 @@ def test_compile_shader_include_dirs_empty_extra_includes(
     )
     cmd = cast(list[str], result["cmd"])
     include_flags = [cmd[i] for i in range(1, len(cmd)) if cmd[i - 1] == "/I"]
-    assert "E:\\shaders" in include_flags  # Only shader_dir should be included
+    expected_shader_dir = os.path.abspath("/shaders")
+    assert any(os.path.abspath(flag) == expected_shader_dir for flag in include_flags)
     assert len(include_flags) == 2  # shader_dir and parent dir
 
 

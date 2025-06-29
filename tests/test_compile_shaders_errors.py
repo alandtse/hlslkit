@@ -26,7 +26,7 @@ def test_validate_shader_inputs_invalid():
     assert isinstance(result, str)
 
 
-def test_validate_shader_inputs_valid(tmp_path):
+def test_validate_shader_inputs_valid(tmp_path, monkeypatch):
     # Should return None for valid input (simulate fxc.exe and shader file)
     fxc = tmp_path / "fxc.exe"
     fxc.write_text("")
@@ -34,5 +34,6 @@ def test_validate_shader_inputs_valid(tmp_path):
     shader.write_text("// shader code")
     output_dir = tmp_path / "out"
     output_dir.mkdir()
+    monkeypatch.setattr("shutil.which", lambda path: str(fxc) if path == str(fxc) or path == "fxc.exe" else None)
     result = compile_shaders.validate_shader_inputs(str(fxc), str(shader), str(output_dir), [], str(tmp_path))
     assert result is None
