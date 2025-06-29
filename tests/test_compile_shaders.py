@@ -87,7 +87,8 @@ def test_compile_shader_success(mock_exists, mock_makedirs, mock_popen, mock_val
         force_partial_precision=False,
     )
     log_str = str(result["log"])
-    assert "Compiled" in log_str or "Invalid shader file" in log_str
+    assert result["success"] is True
+    assert "Compiled" in log_str
 
 
 @patch("hlslkit.compile_shaders.validate_shader_inputs")
@@ -147,8 +148,9 @@ def test_compile_shader_with_warning(mock_exists, mock_makedirs, mock_popen, moc
         force_partial_precision=False,
     )
     log_str = str(result["log"])
-    assert "X4000" in log_str or "Invalid shader file" in log_str
-    assert "GrassCollision::GetDisplacedPosition" in log_str or "Invalid shader file" in log_str
+    assert result["success"] is True  # Should succeed with warning
+    assert "X4000" in log_str
+    assert "GrassCollision::GetDisplacedPosition" in log_str
 
 
 @patch("hlslkit.compile_shaders.validate_shader_inputs")

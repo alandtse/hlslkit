@@ -38,6 +38,16 @@ def test_parse_field_invalid_cpp():
     assert result.get("is_unknown_type") is True
 
 
+def test_parse_field_empty_string():
+    result = parse_field("", "Struct", True)
+    assert result is None
+
+
+def test_parse_field_whitespace():
+    result = parse_field("   ", "Struct", False)
+    assert result is None
+
+
 def test_extract_matrix_size_invalid():
     # Should return None for non-matrix
     assert extract_matrix_size("float") is None

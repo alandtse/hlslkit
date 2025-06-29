@@ -58,7 +58,7 @@ def test_flatten_defines_with_duplicates():
     """Test flatten_defines with duplicate defines."""
     defines = [["A=1", "B"], ["B", "A=2"], ["C"]]
     result = flatten_defines(defines)
-    assert result == ["A=1", "B", "A=2", "C"]  # Ensure duplicates are preserved for compiler to handle
+    assert result == ["A=1", "B", "A=2", "C"]  # Duplicate "B" removed, but "A=1" and "A=2" are different values
 
 
 def test_flatten_defines_empty():
