@@ -1,11 +1,34 @@
-[tool.poetry]
+[project]
 name = "hlslkit"
 version = "0.0.1"
 description = "Tools for automating HLSL shader compilation, diagnostics, and define management."
-authors = ["Alan Tse <alandtse@gmail.com>"]
-repository = "https://github.com/alandtse/hlslkit"
-documentation = "https://alandtse.github.io/hlslkit/"
+authors = [{name = "Alan Tse", email = "alandtse@gmail.com"}]
 readme = "README.md"
+requires-python = ">=3.10,<4.0"
+
+dependencies = [
+    "pyyaml>=6.0.2",
+    "tqdm>=4.67.1",
+    "py-markdown-table>=1.3.0",
+    "psutil>=7.0.0",
+    "pcpp>=1.30",
+    "jellyfish>=1.2.0",
+    "pathspec>=0.12.1"
+]
+
+[project.urls]
+Repository = "https://github.com/alandtse/hlslkit"
+Documentation = "https://alandtse.github.io/hlslkit/"
+
+[project.optional-dependencies]
+gui = ["gooey"]
+
+[project.scripts]
+hlslkit-compile = "hlslkit.compile_shaders:main"
+hlslkit-generate = "hlslkit.generate_shader_defines:main"
+hlslkit-buffer-scan = "hlslkit.buffer_scan:main"
+
+[tool.poetry]
 packages = [
   {include = "hlslkit"}
 ]
@@ -20,14 +43,6 @@ pcpp = "^1.30"
 jellyfish = "^1.2.0"
 pathspec = "^0.12.1"
 gooey = { version = "^1.0.8.1", optional = true }
-
-[tool.poetry.extras]
-gui = ["gooey"]
-
-[tool.poetry.scripts]
-hlslkit-compile = "hlslkit.compile_shaders:main"
-hlslkit-generate = "hlslkit.generate_shader_defines:main"
-hlslkit-buffer-scan = "hlslkit.buffer_scan:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.0"
@@ -121,7 +136,6 @@ skip_empty = true
 [tool.coverage.run]
 branch = true
 source = ["hlslkit"]
-
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]
