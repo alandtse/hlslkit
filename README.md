@@ -123,7 +123,7 @@ Or with custom options:
 python compile_shaders.py --shader-dir build\ALL-WITH-AUTO-DEPLOYMENT\aio\Shaders --output-dir build\ShaderCache --config shader_defines.yaml --jobs 4 --max-warnings 0 --suppress-warnings X1519
 ```
 
--   `--shader-dir`: Directory with HLSL files (default: `build/aio/Shaders`).
+-   `--shader-dir`: Directory **or file** with HLSL files (default: `build/aio/Shaders`). If a file is provided, only that shader (with all its config variants) will be compiled.
 -   `--output-dir`: Output directory for compiled shaders (default: `build/ShaderCache`).
 -   `--config`: Path to `shader_defines.yaml` (default: `shader_defines.yaml`).
 -   `--jobs`: Number of parallel jobs (default: dynamic based on CPU).
@@ -138,10 +138,27 @@ python compile_shaders.py --shader-dir build\ALL-WITH-AUTO-DEPLOYMENT\aio\Shader
 -   `--strip-debug-defines`: Remove debug defines (e.g., `D3DCOMPILE_DEBUG`).
 -   `--optimization-level`: Optimization level (0-3, default: 1 or 3 if stripping debug defines).
 -   `--force-partial-precision`: Use 16-bit floats for performance.
+-   `--extra-includes`: Comma-separated list of additional include directories for `fxc.exe` (these will be added as `/I` flags in addition to the shader's parent directory and shader-dir).
 -   `-d/--debug`: Enable debug output.
 -   `-g/--gui`: Run with GUI (requires `gooey`).
 
-**Note**: Validate `shader_defines.yaml` syntax, as malformed YAML raises uncaught errors.
+**Note:** The parent directory of each shader file is always included as an `/I` path for `fxc.exe`.
+
+**Compile a Single Shader File Example:**
+
+You can compile just one shader file (with all its variants from the config) by passing the file path to `--shader-dir`:
+
+```bash
+python compile_shaders.py --shader-dir path/to/Lighting.hlsl --output-dir build/ShaderCache --config shader_defines.yaml
+```
+
+**Additional Include Directories Example:**
+
+You can specify extra include directories for `fxc.exe` using `--extra-includes`:
+
+```bash
+python compile_shaders.py --shader-dir src --output-dir build --config shader_defines.yaml --extra-includes path/to/includes1,path/to/includes2
+```
 
 ##### Advanced Warning Control
 

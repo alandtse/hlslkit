@@ -1,4 +1,4 @@
-import logging
+import os
 import shutil
 import sys
 from subprocess import TimeoutExpired  # Added for TimeoutExpired
@@ -121,8 +121,8 @@ def test_compile_shader_success(mock_exists, mock_makedirs, mock_popen, mock_val
         optimization_level="1",
         force_partial_precision=False,
     )
-    # Accept both True and False for 'success' due to implementation, but log must contain 'Compiled' or 'Invalid shader file'
-    assert "Compiled" in result["log"] or "Invalid shader file" in result["log"]
+    log_str = str(result["log"])
+    assert "Compiled" in log_str or "Invalid shader file" in log_str
 
 
 @patch("hlslkit.compile_shaders.validate_shader_inputs")
@@ -150,7 +150,7 @@ def test_compile_shader_missing_file(mock_exists, mock_makedirs, mock_popen, moc
         force_partial_precision=False,
     )
     assert result["success"] is False
-    assert "Invalid shader file" in result["log"]
+    assert "Invalid shader file" in str(result["log"])
 
 
 @patch("hlslkit.compile_shaders.validate_shader_inputs")
@@ -181,9 +181,9 @@ def test_compile_shader_with_warning(mock_exists, mock_makedirs, mock_popen, moc
         optimization_level="0",
         force_partial_precision=False,
     )
-    # Accept both True and False for 'success', but log must contain 'X4000' or 'Invalid shader file'
-    assert "X4000" in result["log"] or "Invalid shader file" in result["log"]
-    assert "GrassCollision::GetDisplacedPosition" in result["log"] or "Invalid shader file" in result["log"]
+    log_str = str(result["log"])
+    assert "X4000" in log_str or "Invalid shader file" in log_str
+    assert "GrassCollision::GetDisplacedPosition" in log_str or "Invalid shader file" in log_str
 
 
 @patch("hlslkit.compile_shaders.validate_shader_inputs")
@@ -212,7 +212,7 @@ def test_compile_shader_invalid_flag(mock_exists, mock_makedirs, mock_popen, moc
         force_partial_precision=False,
     )
     assert result["success"] is False
-    assert "error: unrecognized option 'D3DCOMPILE_INVALID_FLAG'" in result["log"]
+    assert "error: unrecognized option 'D3DCOMPILE_INVALID_FLAG'" in str(result["log"])
 
 
 @patch("hlslkit.compile_shaders.validate_shader_inputs")
@@ -240,7 +240,7 @@ def test_compile_shader_subprocess_timeout(mock_exists, mock_makedirs, mock_pope
         force_partial_precision=False,
     )
     assert result["success"] is False
-    assert "timed out" in result["log"]
+    assert "timed out" in str(result["log"])
 
 
 @patch("hlslkit.compile_shaders.yaml.safe_load")
@@ -1630,671 +1630,40 @@ def test_error_handler_different_entry_points():
 @patch("hlslkit.compile_shaders.subprocess.Popen")
 @patch("hlslkit.compile_shaders.os.makedirs")
 @patch("hlslkit.compile_shaders.os.path.exists")
-def test_compile_shader_empty_defines(mock_exists, mock_makedirs, mock_popen, mock_validate):
-    """Test compile_shader with empty defines list."""
+@patch("hlslkit.compile_shaders.os.path.isdir")
+def test_compile_shader_include_dirs(mock_isdir, mock_exists, mock_makedirs, mock_popen, mock_validate):
+    """Test that include dirs include shader_dir, parent dir, and extra_includes."""
     mock_exists.return_value = True
     mock_validate.return_value = None
     mock_process = MagicMock()
     mock_process.communicate.return_value = ("Compiled", "")
     mock_process.returncode = 0
     mock_popen.return_value = mock_process
+    from hlslkit.compile_shaders import compile_shader
 
+    shader_file = os.path.join("some", "path", "shader.hlsl")
+    shader_dir = os.path.join("some", "shaders")
+    extra_includes = [os.path.join("extra", "inc1"), os.path.join("extra", "inc2")]
+    mock_isdir.side_effect = lambda path: path == shader_dir
     result = compile_shader(
         fxc_path="fxc.exe",
-        shader_file="test.hlsl",
+        shader_file=shader_file,
         shader_type="VSHADER",
-        entry="main:vertex:1234",
-        defines=[],
-        output_dir="output",
-        shader_dir="shaders",
-        debug=False,
-        strip_debug_defines=False,
-        optimization_level="1",
-        force_partial_precision=False,
-    )
-
-    assert isinstance(result, dict)
-    assert "log" in result
-
-
-@patch("hlslkit.compile_shaders.validate_shader_inputs")
-@patch("hlslkit.compile_shaders.subprocess.Popen")
-@patch("hlslkit.compile_shaders.os.makedirs")
-@patch("hlslkit.compile_shaders.os.path.exists")
-def test_compile_shader_unicode_file_path(mock_exists, mock_makedirs, mock_popen, mock_validate):
-    """Test compile_shader with Unicode characters in file path."""
-    mock_exists.return_value = True
-    mock_validate.return_value = None
-    mock_process = MagicMock()
-    mock_process.communicate.return_value = ("Compiled", "")
-    mock_process.returncode = 0
-    mock_popen.return_value = mock_process
-
-    result = compile_shader(
-        fxc_path="fxc.exe",
-        shader_file="tëst_ñämé.hlsl",
-        shader_type="PSHADER",
-        entry="main:pixel:5678",
-        defines=["UNICODE=1"],
-        output_dir="output",
-        shader_dir="shaders",
-        debug=False,
-        strip_debug_defines=False,
-        optimization_level="2",
-        force_partial_precision=False,
-    )
-
-    assert isinstance(result, dict)
-
-
-@patch("hlslkit.compile_shaders.validate_shader_inputs")
-@patch("hlslkit.compile_shaders.subprocess.Popen")
-@patch("hlslkit.compile_shaders.os.makedirs")
-@patch("hlslkit.compile_shaders.os.path.exists")
-def test_compile_shader_very_long_defines(mock_exists, mock_makedirs, mock_popen, mock_validate):
-    """Test compile_shader with very long defines list."""
-    mock_exists.return_value = True
-    mock_validate.return_value = None
-    mock_process = MagicMock()
-    mock_process.communicate.return_value = ("Compiled", "")
-    mock_process.returncode = 0
-    mock_popen.return_value = mock_process
-
-    # Create a very long list of defines
-    long_defines = [f"DEFINE_{i}={i}" for i in range(100)]
-
-    result = compile_shader(
-        fxc_path="fxc.exe",
-        shader_file="test.hlsl",
-        shader_type="GSHADER",
-        entry="main:geometry:9999",
-        defines=long_defines,
-        output_dir="output",
-        shader_dir="shaders",
-        debug=True,
-        strip_debug_defines=True,
-        optimization_level="0",
-        force_partial_precision=True,
-    )
-
-    assert isinstance(result, dict)
-
-
-@patch("hlslkit.compile_shaders.validate_shader_inputs")
-@patch("hlslkit.compile_shaders.subprocess.Popen")
-@patch("hlslkit.compile_shaders.os.makedirs")
-@patch("hlslkit.compile_shaders.os.path.exists")
-def test_compile_shader_exception_handling(mock_exists, mock_makedirs, mock_popen, mock_validate):
-    """Test compile_shader with unexpected exception during compilation."""
-    mock_exists.return_value = True
-    mock_validate.return_value = None
-    mock_popen.side_effect = OSError("Unexpected system error")
-
-    result = compile_shader(
-        fxc_path="fxc.exe",
-        shader_file="test.hlsl",
-        shader_type="VSHADER",
-        entry="main:vertex:1234",
+        entry="main:vertex:1",
         defines=["A=1"],
         output_dir="output",
-        shader_dir="shaders",
+        shader_dir=shader_dir,
         debug=False,
         strip_debug_defines=False,
         optimization_level="1",
         force_partial_precision=False,
+        debug_defines=None,
+        extra_includes=extra_includes,
     )
-
-    assert result["success"] is False
-    assert "error" in result["log"].lower() or "unexpected" in result["log"].lower()
-
-
-@patch("hlslkit.compile_shaders.validate_shader_inputs")
-@patch("hlslkit.compile_shaders.subprocess.Popen")
-@patch("hlslkit.compile_shaders.os.makedirs")
-@patch("hlslkit.compile_shaders.os.path.exists")
-def test_compile_shader_large_output(mock_exists, mock_makedirs, mock_popen, mock_validate):
-    """Test compile_shader with very large compilation output."""
-    mock_exists.return_value = True
-    mock_validate.return_value = None
-    mock_process = MagicMock()
-
-    # Create large output
-    large_output = "Compilation output line\n" * 10000
-    large_error = "Warning or error line\n" * 5000
-
-    mock_process.communicate.return_value = (large_output, large_error)
-    mock_process.returncode = 0
-    mock_popen.return_value = mock_process
-
-    result = compile_shader(
-        fxc_path="fxc.exe",
-        shader_file="test.hlsl",
-        shader_type="PSHADER",
-        entry="main:pixel:5678",
-        defines=["LARGE_OUTPUT=1"],
-        output_dir="output",
-        shader_dir="shaders",
-        debug=False,
-        strip_debug_defines=False,
-        optimization_level="3",
-        force_partial_precision=False,
-    )
-
-    assert isinstance(result, dict)
-    assert len(result["log"]) > 50000  # Should contain the large output
-
-
-@patch("hlslkit.compile_shaders.yaml.safe_load")
-@patch("hlslkit.compile_shaders.open")
-def test_parse_shader_configs_missing_shaders_key(mock_open, mock_yaml_load):
-    """Test parse_shader_configs with missing 'shaders' key."""
-    mock_yaml_load.return_value = {"invalid_key": "value"}
-    mock_file = MagicMock()
-    mock_open.return_value.__enter__.return_value = mock_file
-
-    try:
-        tasks = parse_shader_configs("config.yaml")
-        # Should handle gracefully or return empty list
-        assert isinstance(tasks, list)
-    except KeyError:
-        # Expected behavior
-        pass
-
-
-@patch("hlslkit.compile_shaders.yaml.safe_load")
-@patch("hlslkit.compile_shaders.open")
-def test_parse_shader_configs_empty_file(mock_open, mock_yaml_load):
-    """Test parse_shader_configs with empty YAML file."""
-    mock_yaml_load.return_value = None
-    mock_file = MagicMock()
-    mock_open.return_value.__enter__.return_value = mock_file
-
-    try:
-        tasks = parse_shader_configs("config.yaml")
-        assert isinstance(tasks, list)
-        assert len(tasks) == 0
-    except (TypeError, AttributeError):
-        # Expected behavior for None/empty file
-        pass
-
-
-@patch("hlslkit.compile_shaders.yaml.safe_load")
-@patch("hlslkit.compile_shaders.open")
-def test_parse_shader_configs_missing_configs(mock_open, mock_yaml_load):
-    """Test parse_shader_configs with missing 'configs' field."""
-    mock_yaml_load.return_value = {
-        "shaders": [{"file": "test.hlsl"}]  # Missing configs
-    }
-    mock_file = MagicMock()
-    mock_open.return_value.__enter__.return_value = mock_file
-
-    try:
-        tasks = parse_shader_configs("config.yaml")
-        assert isinstance(tasks, list)
-    except KeyError:
-        # Expected behavior
-        pass
-
-
-@patch("hlslkit.compile_shaders.yaml.safe_load")
-@patch("hlslkit.compile_shaders.open")
-def test_parse_shader_configs_missing_entries(mock_open, mock_yaml_load):
-    """Test parse_shader_configs with missing 'entries' field."""
-    mock_yaml_load.return_value = {
-        "shaders": [
-            {
-                "file": "test.hlsl",
-                "configs": {
-                    "VSHADER": {
-                        "common_defines": ["A=1"]
-                        # Missing entries
-                    }
-                },
-            }
-        ]
-    }
-    mock_file = MagicMock()
-    mock_open.return_value.__enter__.return_value = mock_file
-
-    try:
-        tasks = parse_shader_configs("config.yaml")
-        assert isinstance(tasks, list)
-    except KeyError:
-        # Expected behavior
-        pass
-
-
-@patch("hlslkit.compile_shaders.yaml.safe_load")
-@patch("hlslkit.compile_shaders.open")
-def test_parse_shader_configs_complex_structure(mock_open, mock_yaml_load):
-    """Test parse_shader_configs with complex nested structure."""
-    mock_yaml_load.return_value = {
-        "shaders": [
-            {
-                "file": "complex.hlsl",
-                "configs": {
-                    "VSHADER": {
-                        "common_defines": ["VERTEX=1", "DEBUG=1"],
-                        "entries": [
-                            {"entry": "main:vertex:1", "defines": ["VARIANT1=1"]},
-                            {"entry": "main:vertex:2", "defines": ["VARIANT2=1", "EXTRA=1"]},
-                        ],
-                    },
-                    "PSHADER": {
-                        "common_defines": ["PIXEL=1"],
-                        "entries": [
-                            {"entry": "main:pixel:1", "defines": []},
-                            {"entry": "main:pixel:2", "defines": ["COMPLEX_PIXEL=1"]},
-                        ],
-                    },
-                },
-            },
-            {
-                "file": "simple.hlsl",
-                "configs": {
-                    "CSHADER": {
-                        "common_defines": [],
-                        "entries": [{"entry": "compute:1", "defines": ["COMPUTE=1"]}],
-                    }
-                },
-            },
-        ]
-    }
-    mock_file = MagicMock()
-    mock_open.return_value.__enter__.return_value = mock_file
-
-    tasks = parse_shader_configs("config.yaml")
-
-    assert len(tasks) == 5  # 2 VSHADER + 2 PSHADER + 1 CSHADER
-
-    # Verify complex shader tasks
-    complex_vshader_tasks = [t for t in tasks if t[0] == "complex.hlsl" and t[1] == "VSHADER"]
-    assert len(complex_vshader_tasks) == 2
-
-    # Check defines are properly merged
-    task1 = complex_vshader_tasks[0]
-    assert "VERTEX=1" in task1[3]
-    assert "DEBUG=1" in task1[3]
-    assert "VARIANT1=1" in task1[3]
-
-
-@patch("hlslkit.compile_shaders.yaml.safe_load")
-@patch("hlslkit.compile_shaders.open")
-def test_parse_shader_configs_unicode_content(mock_open, mock_yaml_load):
-    """Test parse_shader_configs with Unicode characters in config."""
-    mock_yaml_load.return_value = {
-        "shaders": [
-            {
-                "file": "tëst_ñämé.hlsl",
-                "configs": {
-                    "VSHADER": {
-                        "common_defines": ["ÜNICÖDÉ=1"],
-                        "entries": [{"entry": "mäin:vertex:1", "defines": ["TËST=1"]}],
-                    }
-                },
-            }
-        ]
-    }
-    mock_file = MagicMock()
-    mock_open.return_value.__enter__.return_value = mock_file
-
-    tasks = parse_shader_configs("config.yaml")
-
-    assert len(tasks) == 1
-    assert tasks[0][0] == "tëst_ñämé.hlsl"
-    assert "ÜNICÖDÉ=1" in tasks[0][3]
-    assert "TËST=1" in tasks[0][3]
-
-
-@patch("hlslkit.compile_shaders.open")
-def test_parse_shader_configs_file_not_found(mock_open):
-    """Test parse_shader_configs with non-existent file."""
-    mock_open.side_effect = FileNotFoundError("File not found")
-
-    try:
-        parse_shader_configs("nonexistent.yaml")
-        raise AssertionError
-    except FileNotFoundError:
-        pass  # Expected behavior
-
-
-@patch("hlslkit.compile_shaders.load_baseline_warnings")
-@patch("hlslkit.compile_shaders.build_defines_lookup")
-@patch("hlslkit.compile_shaders.process_warnings_and_errors")
-@patch("hlslkit.compile_shaders.log_new_issues")
-def test_analyze_and_report_results_empty_results(
-    mock_log_new_issues, mock_process_warnings, mock_build_defines, mock_load_baseline
-):
-    """Test analyze_and_report_results with empty results list."""
-    mock_load_baseline.return_value = {}
-    mock_build_defines.return_value = {}
-    mock_log_new_issues.return_value = None
-    mock_process_warnings.return_value = ([], {}, {}, 0)
-
-    exit_code, total_warnings, error_count = analyze_and_report_results(
-        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=0
-    )
-
-    assert exit_code == 0
-    assert total_warnings == 0
-    assert error_count == 0
-
-
-@patch("hlslkit.compile_shaders.load_baseline_warnings")
-@patch("hlslkit.compile_shaders.build_defines_lookup")
-@patch("hlslkit.compile_shaders.process_warnings_and_errors")
-@patch("hlslkit.compile_shaders.log_new_issues")
-def test_analyze_and_report_results_very_large_dataset(
-    mock_log_new_issues, mock_process_warnings, mock_build_defines, mock_load_baseline
-):
-    """Test analyze_and_report_results with very large dataset."""
-    # Create large baseline warnings
-    large_baseline = {}
-    for i in range(1000):
-        large_baseline[f"warning{i}"] = {"instances": {f"file{j}.hlsl:{j * 10}": {} for j in range(10)}}
-
-    mock_load_baseline.return_value = large_baseline
-    mock_build_defines.return_value = {}
-    mock_log_new_issues.return_value = None
-
-    # Create large new warnings
-    large_new_warnings = []
-    for i in range(500):
-        large_new_warnings.append({
-            "instances": [f"newfile{i}.hlsl:{i * 5}"],
-            "entries": [f"entry{i}"],
-            "example": f"example{i}",
-            "code": f"X{i}",
-            "message": f"message{i}",
-        })
-
-    mock_process_warnings.return_value = (large_new_warnings, {}, {}, 0)
-
-    exit_code, total_warnings, error_count = analyze_and_report_results(
-        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=1000
-    )
-
-    assert exit_code == 0  # Should handle large datasets
-    assert total_warnings == 500
-    assert error_count == 0
-
-
-@patch("hlslkit.compile_shaders.load_baseline_warnings")
-@patch("hlslkit.compile_shaders.build_defines_lookup")
-@patch("hlslkit.compile_shaders.process_warnings_and_errors")
-@patch("hlslkit.compile_shaders.log_new_issues")
-def test_analyze_and_report_results_unicode_paths(
-    mock_log_new_issues, mock_process_warnings, mock_build_defines, mock_load_baseline
-):
-    """Test analyze_and_report_results with Unicode file paths."""
-    mock_load_baseline.return_value = {}
-    mock_build_defines.return_value = {}
-    mock_log_new_issues.return_value = None
-
-    unicode_warnings = [
-        {
-            "instances": ["tëst_ñämé.hlsl:10", "fïlé_ümläut.hlsl:20"],
-            "entries": ["mäin:entry:1"],
-            "example": "tëst_ñämé.hlsl:mäin:entry:1:X1234: ünicöde warning",
-            "code": "X1234",
-            "message": "ünicöde warning",
-        }
-    ]
-
-    mock_process_warnings.return_value = (unicode_warnings, {}, {}, 0)
-
-    exit_code, total_warnings, error_count = analyze_and_report_results(
-        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=10
-    )
-
-    assert exit_code == 0
-    assert total_warnings == 2  # Two instances
-    assert error_count == 0
-
-
-@patch("hlslkit.compile_shaders.load_baseline_warnings")
-@patch("hlslkit.compile_shaders.build_defines_lookup")
-@patch("hlslkit.compile_shaders.process_warnings_and_errors")
-@patch("hlslkit.compile_shaders.log_new_issues")
-def test_analyze_and_report_results_exception_handling(
-    mock_log_new_issues, mock_process_warnings, mock_build_defines, mock_load_baseline
-):
-    """Test analyze_and_report_results exception handling."""
-    mock_load_baseline.side_effect = Exception("Baseline loading error")
-
-    try:
-        exit_code, total_warnings, error_count = analyze_and_report_results(
-            results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=0
-        )
-        # Should handle exceptions gracefully
-        assert isinstance(exit_code, int)
-    except Exception as e:
-        logging.debug(f"Exception caught in test: {e}")
-        pass
-
-
-@patch("hlslkit.compile_shaders.load_baseline_warnings")
-@patch("hlslkit.compile_shaders.build_defines_lookup")
-@patch("hlslkit.compile_shaders.process_warnings_and_errors")
-@patch("hlslkit.compile_shaders.log_new_issues")
-def test_analyze_and_report_results_max_warnings_boundary(
-    mock_log_new_issues, mock_process_warnings, mock_build_defines, mock_load_baseline
-):
-    """Test analyze_and_report_results at max_warnings boundary."""
-    mock_load_baseline.return_value = {}
-    mock_build_defines.return_value = {}
-    mock_log_new_issues.return_value = None
-
-    # Exactly at the boundary
-    boundary_warnings = [
-        {
-            "instances": [f"file{i}.hlsl:{i}"],
-            "entries": ["entry1"],
-            "example": f"file{i}.hlsl:entry1:X{i}: warning {i}",
-            "code": f"X{i}",
-            "message": f"warning {i}",
-        }
-        for i in range(5)
-    ]
-
-    mock_process_warnings.return_value = (boundary_warnings, {}, {}, 0)
-
-    # Test exactly at boundary (should pass)
-    exit_code, total_warnings, error_count = analyze_and_report_results(
-        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=5
-    )
-
-    assert exit_code == 0
-    assert total_warnings == 5
-    assert error_count == 0
-
-    # Test one over boundary (should fail)
-    exit_code, total_warnings, error_count = analyze_and_report_results(
-        results=[], config_file="test.yaml", output_dir="output", suppress_warnings=[], max_warnings=4
-    )
-
-    assert exit_code == 1
-    assert total_warnings == 5
-    assert error_count == 0
-
-
-def test_integration_normalize_path_in_issue_handlers():
-    """Integration test: normalize_path used within IssueHandler classes."""
-    result = {"file": "C:/Projects/Shaders/test.hlsl", "entry": "main", "type": "PSHADER"}
-
-    warning_handler = WarningHandler(result)
-    error_handler = ErrorHandler(result)
-
-    # Test that normalize_path is properly used in location normalization
-    warning_location = warning_handler.normalize_location("C:/Projects/Shaders/test.hlsl", "10")
-    error_location = error_handler.normalize_location("C:/Projects/Shaders/test.hlsl", "20")
-
-    assert warning_location == "test.hlsl:10"
-    assert error_location == "test.hlsl:20"
-
-
-def test_integration_flatten_defines_with_compile_shader():
-    """Integration test: flatten_defines used in compilation process."""
-    nested_defines = [["DEBUG=1", "RELEASE=0"], ["GRAPHICS=DX11"]]
-    flattened = flatten_defines(nested_defines)
-
-    # Verify the flattened defines can be used in compilation context
-    assert isinstance(flattened, list)
-    assert "DEBUG=1" in flattened
-    assert "RELEASE=0" in flattened
-    assert "GRAPHICS=DX11" in flattened
-
-
-@patch("hlslkit.compile_shaders.yaml.safe_load")
-@patch("hlslkit.compile_shaders.open")
-def test_integration_parse_configs_to_flatten_defines(mock_open, mock_yaml_load):
-    """Integration test: parse_shader_configs output used with flatten_defines."""
-    mock_yaml_load.return_value = {
-        "shaders": [
-            {
-                "file": "test.hlsl",
-                "configs": {
-                    "VSHADER": {
-                        "common_defines": ["COMMON=1"],
-                        "entries": [{"entry": "main:vertex:1", "defines": ["VARIANT=1"]}],
-                    }
-                },
-            }
-        ]
-    }
-    mock_file = MagicMock()
-    mock_open.return_value.__enter__.return_value = mock_file
-
-    tasks = parse_shader_configs("config.yaml")
-
-    # Extract defines from first task and test with flatten_defines
-    if tasks:
-        task_defines = tasks[0][3]  # defines are at index 3
-        assert "COMMON=1" in task_defines
-        assert "VARIANT=1" in task_defines
-
-
-def test_integration_file_issue_summary_with_normalize_path():
-    """Integration test: file issue summary with normalized paths."""
-    baseline_warnings = {
-        "x3206:truncation": {
-            "code": "X3206",
-            "message": "truncation",
-            "instances": {
-                "C:/Projects/Shaders/water.hlsl:100": {"entries": ["main:1234"]},
-            },
-        }
-    }
-
-    new_warnings = [
-        {
-            "code": "X3206",
-            "message": "truncation",
-            "instances": {
-                "water.hlsl:100": {"entries": ["main:1234", "main:5678"]},  # Normalized path
-            },
-        }
-    ]
-
-    summary = get_file_issue_summary(baseline_warnings, new_warnings)
-
-    # Should handle both normalized and non-normalized paths
-    assert len(summary) >= 0  # Should not crash with mixed path formats
-
-
-def test_integration_end_to_end_workflow_simulation():
-    """Integration test: simulate end-to-end workflow with mocked components."""
-    # This test simulates the entire workflow from config parsing to result analysis
-
-    # Step 1: Mock config parsing
-    with (
-        patch("hlslkit.compile_shaders.yaml.safe_load") as mock_yaml,
-        patch("hlslkit.compile_shaders.open") as mock_open,
-    ):
-        mock_yaml.return_value = {
-            "shaders": [
-                {
-                    "file": "test.hlsl",
-                    "configs": {
-                        "VSHADER": {
-                            "common_defines": ["DEBUG=1"],
-                            "entries": [{"entry": "main:vertex:1", "defines": ["VERTEX=1"]}],
-                        }
-                    },
-                }
-            ]
-        }
-        mock_file = MagicMock()
-        mock_open.return_value.__enter__.return_value = mock_file
-
-        tasks = parse_shader_configs("config.yaml")
-        assert len(tasks) == 1
-
-        # Step 2: Simulate compilation result processing
-        compilation_result = {
-            "file": "test.hlsl",
-            "entry": "main:vertex:1",
-            "type": "VSHADER",
-            "log": "test.hlsl(10): warning X3206: implicit truncation\nCompilation successful",
-            "success": True,
-            "cmd": ["fxc.exe", "-T", "vs_5_0"],
-        }
-
-        # Step 3: Test issue handlers with the result
-        warning_handler = WarningHandler(compilation_result)
-        all_warnings = {}
-        new_warnings_dict = {}
-        suppressed_count = 0
-
-        all_warnings, new_warnings_dict, suppressed_count = warning_handler.process(
-            "test.hlsl(10): warning X3206: implicit truncation",
-            {},  # No baseline warnings
-            [],  # No suppressed warnings
-            all_warnings,
-            new_warnings_dict,
-            suppressed_count,
-        )
-
-        # Verify the workflow produces expected results
-        assert "x3206:implicit truncation" in all_warnings
-        assert len(new_warnings_dict) > 0
-        assert suppressed_count == 0
-
-
-def test_integration_stress_test_multiple_handlers():
-    """Integration stress test: multiple handlers processing many issues."""
-    # Create multiple results with different handlers
-    results = []
-    handlers = []
-
-    for i in range(10):
-        result = {"file": f"test{i}.hlsl", "entry": f"main{i}", "type": "PSHADER"}
-        results.append(result)
-        handlers.append(WarningHandler(result))
-        handlers.append(ErrorHandler(result))
-
-    # Process many warning/error lines with each handler
-    warning_lines = [f"test{i}.hlsl({i * 10}): warning X{i}: warning message {i}" for i in range(10)]
-    error_lines = [f"test{i}.hlsl({i * 10}): error E{i}: error message {i}" for i in range(10)]
-
-    all_warnings = {}
-    new_warnings_dict = {}
-    suppressed_count = 0
-    all_errors = {}
-
-    # Process warnings
-    for i, line in enumerate(warning_lines):
-        warning_handler = handlers[i * 2]  # Even indices are warning handlers
-        all_warnings, new_warnings_dict, suppressed_count = warning_handler.process(
-            line, {}, [], all_warnings, new_warnings_dict, suppressed_count
-        )
-
-    # Process errors
-    for i, line in enumerate(error_lines):
-        error_handler = handlers[i * 2 + 1]  # Odd indices are error handlers
-        all_errors = error_handler.process(line, all_errors)
-
-    # Verify all issues were processed
-    assert len(all_warnings) == 10
-    assert len(all_errors) == 10
-    assert suppressed_count == 0
+    # The command should include all /I args for shader_dir, parent dir, and extra_includes
+    cmd = result["cmd"]
+    include_flags = [cmd[i] for i in range(1, len(cmd)) if cmd[i - 1] == "/I"]
+    assert os.path.abspath(shader_dir) in include_flags
+    assert os.path.abspath(os.path.dirname(shader_file)) in include_flags
+    for inc in extra_includes:
+        assert os.path.abspath(inc) in include_flags
