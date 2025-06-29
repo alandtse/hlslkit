@@ -956,7 +956,7 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
     )
     parser.add_argument(
         "--config",
-        default=defaults.get("config", "shader_defines.yaml"),
+        required=True,
         help="Shader defines YAML file",
     )
     parser.add_argument(
@@ -1019,6 +1019,10 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
     if not is_gui_mode:
         parser.add_argument("-g", "--gui", action="store_true", help="Run with GUI")
     args = parser.parse_args()
+
+    # Validate jobs argument
+    if args.jobs <= 0:
+        parser.error("--jobs must be a positive integer")
 
     # Pre-compute debug defines set to avoid repeated parsing
     if args.debug_defines and args.debug_defines.strip():
