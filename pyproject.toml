@@ -13,8 +13,7 @@ dependencies = [
     "psutil>=7.0.0",
     "pcpp>=1.30",
     "jellyfish>=1.2.0",
-    "pathspec>=0.12.1",
-    "gooey>=1.0.8.1; extra == 'gui'"
+    "pathspec>=0.12.1"
 ]
 
 [project.urls]

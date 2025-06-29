@@ -1659,4 +1659,4 @@ gui = ["gooey"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4.0"
-content-hash = "c4fe79377be7c048f1fa4de8e4908e57840182231d1921ccfec8e9f16e25231d"
+content-hash = "a13652ba5b43718b9c7ab3551db9f5e57ceeb62dc9b3252f2fa2a3397af8cff9"
