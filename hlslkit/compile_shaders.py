@@ -142,7 +142,11 @@ def validate_shader_inputs(
     fxc_executable = shutil.which(fxc_path)
     if not fxc_executable:
         return "fxc.exe not found in PATH or specified path"
-    shader_file_path = os.path.join(shader_dir, os.path.basename(shader_file))
+    # Determine if shader_dir is a file or directory
+    if os.path.isfile(shader_dir):
+        shader_file_path = os.path.abspath(shader_file)
+    else:
+        shader_file_path = os.path.join(shader_dir, os.path.basename(shader_file))
     if not os.path.isfile(shader_file_path) or not shader_file.endswith((".hlsl", ".hlsli")):
         return f"Invalid shader file: {shader_file}"
     abs_output_dir = os.path.abspath(output_dir)
@@ -168,6 +172,7 @@ def compile_shader(
     optimization_level: str = "1",
     force_partial_precision: bool = False,
     debug_defines: set[str] | None = None,
+    extra_includes: list[str] | None = None,
 ) -> dict[str, object]:
     """Compile a shader using fxc.exe.
 
@@ -184,6 +189,7 @@ def compile_shader(
         optimization_level (str): Optimization level (0-3).
         force_partial_precision (bool): Force 16-bit precision.
         debug_defines (set[str] | None): Set of debug defines to strip.
+        extra_includes (list[str] | None): List of additional include directories.
 
     Returns:
         dict[str, any]: Compilation result with file, entry, type, log, success, and command.
@@ -238,7 +244,11 @@ def compile_shader(
     shader_model_map = {"VSHADER": "vs_5_0", "PSHADER": "ps_5_0", "CSHADER": "cs_5_0"}
     model = shader_model_map[shader_type.upper()]
 
-    shader_file_path = os.path.join(shader_dir, shader_basename)
+    # Determine if shader_dir is a file or directory
+    if os.path.isfile(shader_dir):
+        shader_file_path = os.path.abspath(shader_file)
+    else:
+        shader_file_path = os.path.join(shader_dir, shader_basename)
     if not os.path.exists(shader_file_path):
         error_msg = f"Shader file not found in {shader_dir}: {shader_basename}"
         logging.error(error_msg)
@@ -278,7 +288,22 @@ def compile_shader(
         cmd.append("/Gfp")
     for d in defines:
         cmd.extend(["/D", d])
-    cmd.extend(["/I", os.path.abspath(shader_dir)])
+    # Always include shader_dir (if directory), or the file's parent (if file)
+    include_dirs = []
+    if os.path.isdir(shader_dir):
+        include_dirs.append(os.path.abspath(shader_dir))
+    # Always include the parent directory of the shader file
+    shader_parent = os.path.abspath(os.path.dirname(shader_file))
+    if shader_parent not in include_dirs:
+        include_dirs.append(shader_parent)
+    # Add extra includes if provided
+    if extra_includes:
+        for inc in extra_includes:
+            inc_path = os.path.abspath(inc)
+            if inc_path not in include_dirs:
+                include_dirs.append(inc_path)
+    for inc in include_dirs:
+        cmd.extend(["/I", inc])
 
     log = ""
     success = False
@@ -931,7 +956,7 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
     )
     parser.add_argument(
         "--config",
-        default=defaults.get("config", "shader_defines.yaml"),
+        required=True,
         help="Shader defines YAML file",
     )
     parser.add_argument(
@@ -986,9 +1011,18 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
         ),
         help="Comma-separated list of defines to treat as debug (default: common debug defines)",
     )
+    parser.add_argument(
+        "--extra-includes",
+        default=defaults.get("extra-includes", ""),
+        help="Comma-separated list of additional include directories for fxc.exe",
+    )
     if not is_gui_mode:
         parser.add_argument("-g", "--gui", action="store_true", help="Run with GUI")
     args = parser.parse_args()
+
+    # Validate jobs argument
+    if args.jobs <= 0:
+        parser.error("--jobs must be a positive integer")
 
     # Pre-compute debug defines set to avoid repeated parsing
     if args.debug_defines and args.debug_defines.strip():
@@ -1094,19 +1128,34 @@ def initialize_compilation(
             return max_workers, target_jobs, jobs_reason, []
 
     if not os.path.exists(args.shader_dir):
-        logging.error(f"Shader directory not found: {args.shader_dir}")
+        logging.error(f"Shader directory or file not found: {args.shader_dir}")
         return max_workers, target_jobs, jobs_reason, []
     if not os.path.exists(args.config):
         logging.error(f"Configuration file not found: {args.config}")
         return max_workers, target_jobs, jobs_reason, []
 
     tasks = []
-    for file_name, shader_type, entry_name, defines in parse_shader_configs(args.config):
-        shader_file = os.path.join(args.shader_dir, file_name)
-        if not os.path.exists(shader_file):
-            logging.error(f"Shader file not found: {file_name}")
-            continue
-        tasks.append((shader_file, shader_type, entry_name, defines))
+    config_tasks = parse_shader_configs(args.config)
+    # If shader_dir is a file, only compile that file (with all its variants from config)
+    if os.path.isfile(args.shader_dir):
+        shader_file_path = os.path.abspath(args.shader_dir)
+        shader_file_name = os.path.basename(shader_file_path)
+        found = False
+        for file_name, shader_type, entry_name, defines in config_tasks:
+            if os.path.basename(file_name) == shader_file_name:
+                found = True
+                tasks.append((shader_file_path, shader_type, entry_name, defines))
+        if not found:
+            logging.error(f"Shader file {shader_file_name} not found in config {args.config}")
+            return max_workers, target_jobs, jobs_reason, []
+    else:
+        # Directory mode (existing logic)
+        for file_name, shader_type, entry_name, defines in config_tasks:
+            shader_file = os.path.join(args.shader_dir, file_name)
+            if not os.path.exists(shader_file):
+                logging.error(f"Shader file not found: {file_name}")
+                continue
+            tasks.append((shader_file, shader_type, entry_name, defines))
 
     if not tasks:
         logging.error("No valid shader compilation tasks found")
@@ -1185,6 +1234,8 @@ def submit_tasks(
     while active_tasks < target_jobs and task_iterator:
         try:
             task = next(task_iterator)
+            # Parse extra includes from args
+            extra_includes = [s for s in (args.extra_includes.split(",") if args.extra_includes else []) if s.strip()]
             future = executor.submit(
                 compile_shader,
                 args.fxc,
@@ -1199,6 +1250,7 @@ def submit_tasks(
                 args.optimization_level,
                 args.force_partial_precision,
                 args.debug_defines_set,
+                extra_includes,  # Pass extra includes
             )
             futures[future] = task
             active_tasks += 1
