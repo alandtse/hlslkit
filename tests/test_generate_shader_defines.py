@@ -1,6 +1,10 @@
+import contextlib
+import os
 import tempfile
 from datetime import datetime
 from unittest.mock import MagicMock, patch
+
+import yaml
 
 from hlslkit.generate_shader_defines import (
     CompilationTask,
@@ -10,6 +14,7 @@ from hlslkit.generate_shader_defines import (
     generate_yaml_data,
     get_shader_type_from_entry,
     normalize_path,
+    optimize_anchor_deduplication,
     parse_log,
     parse_timestamp,
     populate_configs,
@@ -70,23 +75,23 @@ def test_parse_log(mock_open):
         {
             "entry": "Sky:Vertex:0",
             "defines": [
-                "VSHADER",
-                "D3DCOMPILE_SKIP_OPTIMIZATION",
+                "CLOUD_SHADOWS",
                 "D3DCOMPILE_DEBUG",
+                "D3DCOMPILE_SKIP_OPTIMIZATION",
+                "DYNAMIC_CUBEMAPS",
+                "IBL",
+                "ISL",
+                "LIGHT_LIMIT_FIX",
+                "LOD_BLENDING",
                 "OCCLUSION",
                 "SCREEN_SPACE_SHADOWS",
-                "WETNESS_EFFECTS",
-                "LIGHT_LIMIT_FIX",
-                "DYNAMIC_CUBEMAPS",
-                "CLOUD_SHADOWS",
-                "WATER_EFFECTS",
-                "SSS",
-                "TERRAIN_SHADOWS",
                 "SKYLIGHTING",
+                "SSS",
                 "TERRAIN_BLENDING",
-                "LOD_BLENDING",
-                "ISL",
-                "IBL",
+                "TERRAIN_SHADOWS",
+                "VSHADER",
+                "WATER_EFFECTS",
+                "WETNESS_EFFECTS",
             ],
         }
     ]
@@ -109,7 +114,7 @@ def test_parse_log_with_x4000_warning(mock_open):
     shader_configs, warnings, errors = parse_log("log.txt")
     assert "RunGrass.hlsl" in shader_configs
     assert shader_configs["RunGrass.hlsl"]["VSHADER"] == [
-        {"entry": "Grass:Vertex:4", "defines": ["VSHADER", "D3DCOMPILE_DEBUG", "WATER_EFFECTS", "GRASS_COLLISION"]}
+        {"entry": "Grass:Vertex:4", "defines": ["D3DCOMPILE_DEBUG", "GRASS_COLLISION", "VSHADER", "WATER_EFFECTS"]}
     ]
     assert "x4000:use of potentially uninitialized variable (grasscollision::getdisplacedposition)" in warnings
     assert warnings["x4000:use of potentially uninitialized variable (grasscollision::getdisplacedposition)"][
@@ -132,7 +137,7 @@ def test_parse_log_with_forward_slashes(mock_open):
     shader_configs, warnings, errors = parse_log("log.txt")
     assert "RunGrass.hlsl" in shader_configs
     assert shader_configs["RunGrass.hlsl"]["VSHADER"] == [
-        {"entry": "Grass:Vertex:4", "defines": ["VSHADER", "D3DCOMPILE_DEBUG", "WATER_EFFECTS", "GRASS_COLLISION"]}
+        {"entry": "Grass:Vertex:4", "defines": ["D3DCOMPILE_DEBUG", "GRASS_COLLISION", "VSHADER", "WATER_EFFECTS"]}
     ]
     assert "x4000:use of potentially uninitialized variable (grasscollision::getdisplacedposition)" in warnings
     assert warnings["x4000:use of potentially uninitialized variable (grasscollision::getdisplacedposition)"][
@@ -154,7 +159,7 @@ def test_parse_log_with_conflicting_defines(mock_open):
     assert shader_configs["RunGrass.hlsl"]["VSHADER"] == [
         {
             "entry": "Grass:Vertex:10007",
-            "defines": ["VSHADER", "D3DCOMPILE_DEBUG", "WATER_EFFECTS", "GRASS_COLLISION", "WATER_EFFECTS"],
+            "defines": ["D3DCOMPILE_DEBUG", "GRASS_COLLISION", "VSHADER", "WATER_EFFECTS", "WATER_EFFECTS"],
         }
     ]
 
@@ -196,7 +201,7 @@ def test_parse_log_with_error(mock_open):
     mock_open.return_value = mock_file
     shader_configs, warnings, errors = parse_log("log.txt")
     assert shader_configs["RunGrass.hlsl"]["VSHADER"] == [
-        {"entry": "Grass:Vertex:4", "defines": ["VSHADER", "D3DCOMPILE_DEBUG"]}
+        {"entry": "Grass:Vertex:4", "defines": ["D3DCOMPILE_DEBUG", "VSHADER"]}
     ]
     assert errors == {}  # No errors parsed, based on failure
 
@@ -390,7 +395,6 @@ def test_save_yaml_with_anchors():
 
 def test_yaml_output_has_anchors_and_is_loadable():
     """Test that save_yaml emits anchors for repeated lists and that the YAML is loadable."""
-    import yaml
 
     from hlslkit.generate_shader_defines import save_yaml
 
@@ -418,24 +422,29 @@ def test_yaml_output_has_anchors_and_is_loadable():
             }
         ],
     }
-    with tempfile.NamedTemporaryFile("r+") as tmp:
-        save_yaml(yaml_data, tmp.name)
-        tmp.seek(0)
-        output = tmp.read()
-    # Check for YAML anchor (&) and alias (*)
-    assert "&" in output and "*" in output
-    # Check that loading the YAML gives the same structure
-    loaded = yaml.safe_load(output)
-    assert loaded["common_defines"] == ["A=1", "B=2"]
-    assert loaded["shaders"][0]["configs"]["PSHADER"]["common_defines"] == ["A=1", "B=2"]
-    assert loaded["shaders"][0]["configs"]["VSHADER"]["common_defines"] == ["A=1", "B=2"]
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        save_yaml(yaml_data, tmp_path)
+        with open(tmp_path, encoding="utf-8") as f:
+            output = f.read()
+        # Check for YAML anchor (&) and alias (*)
+        assert "&" in output and "*" in output
+        # Check that loading the YAML gives the same structure
+        loaded = yaml.safe_load(output)
+        assert loaded["common_defines"] == ["A=1", "B=2"]
+        assert loaded["shaders"][0]["configs"]["PSHADER"]["common_defines"] == ["A=1", "B=2"]
+        assert loaded["shaders"][0]["configs"]["VSHADER"]["common_defines"] == ["A=1", "B=2"]
+    finally:
+        # Clean up
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
 
 
 def test_yaml_deduplication_and_nested_anchors():
     """Test that save_yaml deduplicates equal lists and emits anchors for flat and nested cases."""
     import tempfile
-
-    import yaml
 
     from hlslkit.generate_shader_defines import save_yaml
 
@@ -471,18 +480,110 @@ def test_yaml_deduplication_and_nested_anchors():
         "nested": nested1,
         "nested2": nested2,
     }
-    with tempfile.NamedTemporaryFile("r+") as tmp:
-        save_yaml(yaml_data, tmp.name)
-        tmp.seek(0)
-        output = tmp.read()
-    # Check for YAML anchor (&) and alias (*)
-    assert output.count("&") >= 2  # at least two anchors (flat and nested)
-    assert output.count("*") >= 2  # at least two aliases
-    # Check that loading the YAML gives the same structure (by value)
-    loaded = yaml.safe_load(output)
-    assert loaded["common_defines"] == ["A=1", "B=2"]
-    assert loaded["shaders"][0]["configs"]["PSHADER"]["common_defines"] == ["A=1", "B=2"]
-    assert loaded["shaders"][0]["configs"]["VSHADER"]["common_defines"] == ["A=1", "B=2"]
-    # Nested lists
-    assert loaded["nested"] == [["X", "Y"], ["X", "Y"]]
-    assert loaded["nested2"] == [["X", "Y"], ["X", "Y"]]
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        save_yaml(yaml_data, tmp_path)
+        with open(tmp_path, encoding="utf-8") as f:
+            output = f.read()
+        # Check for YAML anchor (&) and alias (*)
+        assert output.count("&") >= 2  # at least two anchors (flat and nested)
+        assert output.count("*") >= 2  # at least two aliases
+        # Check that loading the YAML gives the same structure (by value)
+        loaded = yaml.safe_load(output)
+        assert loaded["common_defines"] == ["A=1", "B=2"]
+        assert loaded["shaders"][0]["configs"]["PSHADER"]["common_defines"] == ["A=1", "B=2"]
+        assert loaded["shaders"][0]["configs"]["VSHADER"]["common_defines"] == ["A=1", "B=2"]
+        # Nested lists
+        assert loaded["nested"] == [["X", "Y"], ["X", "Y"]]
+        assert loaded["nested2"] == [["X", "Y"], ["X", "Y"]]
+    finally:
+        # Clean up
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+
+
+def test_optimize_anchor_deduplication_simple():
+    """Test that optimize_anchor_deduplication works with simple lists."""
+
+    # Create separate list objects with identical content
+    a = ["A=1", "B=2"]
+    b = ["A=1", "B=2"]  # different object, same value
+    c = ["A=1", "B=2"]  # different object, same value
+
+    yaml_data = {
+        "list1": a,
+        "list2": b,
+        "list3": c,
+    }
+
+    optimized, _ = optimize_anchor_deduplication(yaml_data)
+
+    # All three lists should now be the same object
+    assert optimized["list1"] is optimized["list2"]
+    assert optimized["list2"] is optimized["list3"]
+    assert optimized["list1"] == ["A=1", "B=2"]
+
+
+def test_optimize_anchor_deduplication_nested():
+    """Test that optimize_anchor_deduplication works with nested lists."""
+
+    # Create nested lists
+    nested1 = [["X", "Y"], ["X", "Y"]]
+    nested2 = [["X", "Y"], ["X", "Y"]]
+
+    yaml_data = {
+        "nested1": nested1,
+        "nested2": nested2,
+    }
+
+    optimized, _ = optimize_anchor_deduplication(yaml_data)
+
+    # The nested lists should now be the same object
+    assert optimized["nested1"] is optimized["nested2"]
+    assert optimized["nested1"] == [["X", "Y"], ["X", "Y"]]
+
+
+def test_optimize_anchor_deduplication_complex():
+    """Test that optimize_anchor_deduplication works with complex nested structures."""
+
+    # Create separate list objects with identical content
+    a = ["A=1", "B=2"]
+    b = ["A=1", "B=2"]  # different object, same value
+    c = ["A=1", "B=2"]  # different object, same value
+
+    # Complex nested structure similar to the failing test
+    yaml_data = {
+        "common_defines": a,
+        "shaders": [
+            {
+                "file": "test.hlsl",
+                "configs": {
+                    "PSHADER": {
+                        "common_defines": b,
+                        "entries": [
+                            {"entry": "main:1234", "defines": []},
+                            {"entry": "main:5678", "defines": []},
+                        ],
+                    },
+                    "VSHADER": {
+                        "common_defines": c,
+                        "entries": [
+                            {"entry": "main:9012", "defines": []},
+                        ],
+                    },
+                },
+            }
+        ],
+    }
+
+    optimized, _ = optimize_anchor_deduplication(yaml_data)
+
+    # All three lists should now be the same object
+    assert optimized["common_defines"] is optimized["shaders"][0]["configs"]["PSHADER"]["common_defines"]
+    assert (
+        optimized["shaders"][0]["configs"]["PSHADER"]["common_defines"]
+        is optimized["shaders"][0]["configs"]["VSHADER"]["common_defines"]
+    )
+    assert optimized["common_defines"] == ["A=1", "B=2"]

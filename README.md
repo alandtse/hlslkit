@@ -84,6 +84,7 @@ python generate_shader_defines.py --log "E:\Documents\my games\Skyrim Special Ed
 -   `--log`: Path to the log file (required).
 -   `--output`: Output YAML file (default: `shader_defines.yaml`).
 -   `--update-log`: Optional additional log (e.g., VR log) to merge configs.
+-   `--log-level`: Set the logging level (default: INFO, choices: DEBUG, INFO, WARNING, ERROR, CRITICAL).
 -   `-d/--debug`: Enable debug output.
 -   `-g/--gui`: Run with GUI (requires `gooey`).
 

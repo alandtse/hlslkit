@@ -58,7 +58,12 @@ def test_flatten_defines_with_duplicates():
     """Test flatten_defines with duplicate defines."""
     defines = [["A=1", "B"], ["B", "A=2"], ["C"]]
     result = flatten_defines(defines)
-    assert result == ["A=1", "B", "A=2", "C"]  # Duplicate "B" removed, but "A=1" and "A=2" are different values
+    assert result == [
+        "A=1",
+        "A=2",
+        "B",
+        "C",
+    ]  # Duplicate "B" removed, but "A=1" and "A=2" are different values, now sorted
 
 
 def test_flatten_defines_empty():
@@ -72,7 +77,7 @@ def test_flatten_defines_invalid():
     """Test flatten_defines with None in input."""
     defines = [["A=1"], None, ["B"]]
     result = flatten_defines(defines)
-    assert result == ["A=1", None, "B"]  # Matches actual behavior
+    assert result == ["A=1", "B"]  # None values filtered out, result sorted
 
 
 def test_normalize_path_empty_string():
@@ -143,7 +148,7 @@ def test_flatten_defines_mixed_types():
     """Test flatten_defines with mixed types."""
     defines = [["A=1"], "B=2", ["C=3"], None, ["D=4"]]
     result = flatten_defines(defines)
-    assert result == ["A=1", "B=2", "C=3", None, "D=4"]
+    assert result == ["A=1", "B=2", "C=3", "D=4"]  # None values filtered out, result sorted
 
 
 def test_flatten_defines_very_large_input():

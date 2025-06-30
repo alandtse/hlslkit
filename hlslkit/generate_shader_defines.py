@@ -221,7 +221,7 @@ def populate_configs(tasks: list[CompilationTask], shader_configs: dict) -> dict
             file_name = file_path
             entry_point = task.entry_point
             shader_type = get_shader_type_from_entry(entry_point)
-            defines = task.defines
+            defines = sorted(task.defines)  # Sort for better anchor deduplication
 
             if file_name not in shader_configs:
                 shader_configs[file_name] = {
@@ -418,7 +418,7 @@ def compute_common_defines(shader_configs: dict) -> tuple[list, dict, dict]:
         for configs in file_configs.values()
         for config in configs
     ]
-    global_common = list(set.intersection(*[set(d) for d in all_defines])) if all_defines else []
+    global_common = sorted(set.intersection(*[set(d) for d in all_defines])) if all_defines else []
     defines_by_type = {"PSHADER": [], "VSHADER": [], "CSHADER": []}
     for file_configs in shader_configs.values():
         for shader_type, configs in file_configs.items():
@@ -426,20 +426,20 @@ def compute_common_defines(shader_configs: dict) -> tuple[list, dict, dict]:
                 defines_by_type[shader_type].append(config["defines"])
     type_common = {}
     for shader_type, defines_list in defines_by_type.items():
-        type_common[shader_type] = list(set.intersection(*[set(d) for d in defines_list])) if defines_list else []
-        type_common[shader_type] = [d for d in type_common[shader_type] if d not in global_common]
+        type_common[shader_type] = sorted(set.intersection(*[set(d) for d in defines_list])) if defines_list else []
+        type_common[shader_type] = sorted([d for d in type_common[shader_type] if d not in global_common])
     file_type_common = {}
     for file_name, file_configs in shader_configs.items():
         file_type_common[file_name] = {"PSHADER": [], "VSHADER": [], "CSHADER": []}
         for shader_type, configs in file_configs.items():
-            file_type_common[file_name][shader_type] = (
-                list(set.intersection(*[set(c["defines"]) for c in configs])) if configs else []
+            file_type_common[file_name][shader_type] = sorted(
+                set.intersection(*[set(c["defines"]) for c in configs]) if configs else set()
             )
-            file_type_common[file_name][shader_type] = [
+            file_type_common[file_name][shader_type] = sorted([
                 d
                 for d in file_type_common[file_name][shader_type]
                 if d not in global_common and d not in type_common[shader_type]
-            ]
+            ])
     return global_common, type_common, file_type_common
 
 
@@ -455,10 +455,10 @@ def generate_yaml_data(shader_configs: dict, warnings: dict, errors: dict) -> di
     """
     global_common, type_common, file_type_common = compute_common_defines(shader_configs)
     yaml_data = {
-        "common_defines": global_common,
-        "common_pshader_defines": type_common["PSHADER"],
-        "common_vshader_defines": type_common["VSHADER"],
-        "common_cshader_defines": type_common["CSHADER"],
+        "common_defines": sorted(global_common),
+        "common_pshader_defines": sorted(type_common["PSHADER"]),
+        "common_vshader_defines": sorted(type_common["VSHADER"]),
+        "common_cshader_defines": sorted(type_common["CSHADER"]),
         "file_common_defines": file_type_common,
         "warnings": warnings,
         "errors": errors,
@@ -479,17 +479,17 @@ def generate_yaml_data(shader_configs: dict, warnings: dict, errors: dict) -> di
                     elif isinstance(defines, (set, tuple)):
                         common_defines.extend(list(defines))
                 shader_entry["configs"][shader_type] = {
-                    "common_defines": common_defines,
+                    "common_defines": sorted(common_defines),
                     "entries": [
                         {
                             "entry": config["entry"],
-                            "defines": [
+                            "defines": sorted([
                                 d
                                 for d in config["defines"]
                                 if d not in global_common
                                 and d not in type_common[shader_type]
                                 and d not in file_type_common[file_name][shader_type]
-                            ],
+                            ]),
                         }
                         for config in configs
                     ],
@@ -499,81 +499,146 @@ def generate_yaml_data(shader_configs: dict, warnings: dict, errors: dict) -> di
     return yaml_data
 
 
-def make_hashable(obj):
-    if isinstance(obj, list):
-        return tuple(make_hashable(x) for x in obj)
-    elif isinstance(obj, dict):
-        return tuple(sorted((k, make_hashable(v)) for k, v in obj.items()))
-    else:
-        return obj
+def optimize_anchor_deduplication(yaml_data):
+    """Pre-process data to maximize anchor reuse with O(n log n) complexity.
+    Returns (optimized_data, stats_dict)
+    """
+    list_counts = {}
+    list_instances = []
 
+    def make_hashable(obj):
+        if isinstance(obj, list):
+            return tuple(make_hashable(x) for x in obj)
+        elif isinstance(obj, dict):
+            return tuple(sorted((k, make_hashable(v)) for k, v in obj.items()))
+        else:
+            return obj
 
-def deduplicate_lists(obj, memo=None):
-    """Recursively deduplicate all equal lists in a data structure, replacing them with a shared object."""
-    if memo is None:
-        memo = {}
-    if isinstance(obj, list):
-        key = make_hashable(obj)
-        if key in memo:
-            return memo[key]
-        # Deduplicate elements recursively
-        deduped = [deduplicate_lists(x, memo) if isinstance(x, (list, dict)) else x for x in obj]
-        memo[key] = deduped
-        return deduped
-    elif isinstance(obj, dict):
-        return {k: deduplicate_lists(v, memo) if isinstance(v, (list, dict)) else v for k, v in obj.items()}
-    else:
-        return obj
+    def collect_lists(obj, path=None):
+        if path is None:
+            path = []
+        if isinstance(obj, list):
+            try:
+                key = make_hashable(obj)
+                if key not in list_counts:
+                    list_counts[key] = 0
+                list_counts[key] += 1
+                list_instances.append((key, obj, path))
+                logging.debug(f"List at {path}: {obj} -> key: {key}")
+            except (TypeError, RecursionError):
+                logging.debug(f"Skipping unhashable list at {path}: {obj}")
+                pass
+            for idx, item in enumerate(obj):
+                collect_lists(item, [*path, idx])
+        elif isinstance(obj, dict):
+            for k, v in obj.items():
+                collect_lists(v, [*path, k])
+
+    collect_lists(yaml_data)
+    logging.debug(f"Found {len(list_counts)} unique lists")
+    for key, count in list_counts.items():
+        logging.debug(f"List {key} appears {count} times")
+
+    def reconstruct_list(obj):
+        if isinstance(obj, tuple):
+            return [reconstruct_list(x) for x in obj]
+        else:
+            return obj
+
+    sorted_lists = sorted([(key, count, len(key)) for key, count in list_counts.items()], key=lambda x: (-x[1], -x[2]))
+    shared_objects = {}
+    anchor_ref_count = 0
+    for key, count, _size in sorted_lists:
+        if count > 1:
+            shared_objects[key] = reconstruct_list(key)
+            logging.debug(f"Creating shared object for {key} (used {count} times)")
+            anchor_ref_count += count - 1  # Each additional use is an alias
+    logging.debug(f"Created {len(shared_objects)} shared objects")
+
+    def replace_with_shared(obj, path=None):
+        if path is None:
+            path = []
+        if isinstance(obj, list):
+            try:
+                key = make_hashable(obj)
+                if key in shared_objects:
+                    logging.debug(f"Replacing list at {path} with shared object")
+                    return shared_objects[key]
+            except (TypeError, RecursionError):
+                pass
+            return [replace_with_shared(x, [*path, i]) for i, x in enumerate(obj)]
+        elif isinstance(obj, dict):
+            return {k: replace_with_shared(v, [*path, k]) for k, v in obj.items()}
+        else:
+            return obj
+
+    optimized = replace_with_shared(yaml_data)
+    stats = {
+        "total_lists": len(list_instances),
+        "unique_lists": len(list_counts),
+        "anchored_lists": len(shared_objects),
+        "anchor_references": anchor_ref_count,
+        "max_anchor_usage": max([count for key, count in list_counts.items() if count > 1], default=0),
+    }
+    return optimized, stats
 
 
 def save_yaml(yaml_data: dict, output_file: str) -> None:
     """Save the YAML data to a file, using anchors for repeated lists to reduce repetition.
-    Automatically deduplicates all equal lists so anchors are maximally used.
+    The data is pre-processed by optimize_anchor_deduplication() to maximize anchor usage
+    with O(n log n) complexity instead of the previous Θ(n²) approach.
     Args:
         yaml_data (dict): YAML data to save.
         output_file (str): Path to the output YAML file.
     """
-    from collections import defaultdict
 
-    class AnchorDumper(yaml.SafeDumper):
+    class OptimizedAnchorDumper(yaml.SafeDumper):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            self._list_id_to_anchor = {}
-            self._anchor_counts = defaultdict(int)
+            self._anchor_map = {}
+            self._next_anchor_id = 1
 
         def ignore_aliases(self, data):
-            # Only use anchors for lists (not dicts or scalars)
             return not isinstance(data, list)
 
         def represent_sequence(self, tag, sequence, flow_style=None):
-            # Use anchors for repeated lists
-            list_id = id(sequence)
-            if list_id in self._list_id_to_anchor:
-                anchor = self._list_id_to_anchor[list_id]
+            obj_id = id(sequence)
+            if obj_id in self._anchor_map:
+                anchor = self._anchor_map[obj_id]
             else:
                 anchor = None
-                # Only anchor if this list is referenced more than once
-                for _k, v in self.represented_objects.items():
-                    if v is sequence:
-                        self._anchor_counts[list_id] += 1
-                        if self._anchor_counts[list_id] == 2:
-                            anchor = f"id{list_id}"
-                            self._list_id_to_anchor[list_id] = anchor
-                        break
+                if hasattr(self, "_seen_objects"):
+                    if obj_id in self._seen_objects:
+                        anchor = f"anchor_{self._next_anchor_id}"
+                        self._next_anchor_id += 1
+                        self._anchor_map[obj_id] = anchor
+                    else:
+                        self._seen_objects.add(obj_id)
+                else:
+                    self._seen_objects = {obj_id}
             node = super().represent_sequence(tag, sequence, flow_style)
             if anchor:
                 node.anchor = anchor  # type: ignore[attr-defined]
             return node
 
-    deduped = deduplicate_lists(yaml_data)
+    deduped, stats = optimize_anchor_deduplication(yaml_data)
     with open(output_file, "w", encoding="utf-8") as f:
         yaml.dump(
             deduped,
             f,
-            Dumper=AnchorDumper,
+            Dumper=OptimizedAnchorDumper,
             sort_keys=False,
             allow_unicode=True,
         )
+    logging.info(
+        f"Deduplication stats: {stats['total_lists']} total lists, {stats['unique_lists']} unique "
+        f"({stats['unique_lists'] / stats['total_lists'] * 100:.1f}% unique), "
+        f"{stats['anchored_lists']} anchored ({stats['anchored_lists'] / stats['total_lists'] * 100:.1f}% of total), "
+        f"{stats['anchor_references']} references saved "
+        f"(reduction: {stats['anchor_references'] / (stats['total_lists'] - stats['unique_lists']) * 100:.1f}% of duplicates)"
+        if stats["total_lists"] > stats["unique_lists"]
+        else "no duplicates found"
+    )
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -596,6 +661,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Output YAML file for shader defines",
     )
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set the logging level (default: INFO)",
+    )
     if not is_gui_mode:
         parser.add_argument("-g", "--gui", action="store_true", help="Run with GUI")
     return parser.parse_args()
@@ -608,11 +679,14 @@ def main() -> int:
         int: Exit code (0 for success, 1 for errors).
     """
     args = parse_arguments()
+    log_level = getattr(logging, getattr(args, "log_level", "INFO").upper(), logging.INFO)
     logging.basicConfig(
-        level=logging.DEBUG if args.debug else logging.INFO,
+        level=log_level,
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[logging.StreamHandler(sys.stderr)],
     )
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     if not os.path.exists(args.log):
         logging.error(f"Log file not found: {args.log}")
