@@ -86,7 +86,7 @@ def flatten_defines(defines: list) -> list[str]:
         defines (list): List of defines, possibly nested.
 
     Returns:
-        list[str]: Flattened list of unique defines.
+        list[str]: Flattened list of unique defines, sorted for deterministic output.
 
     Example:
         >>> flatten_defines([["A=1", "B"], "C"])
@@ -99,7 +99,8 @@ def flatten_defines(defines: list) -> list[str]:
         else:
             flat.append(d)
     seen = set()
-    return [d for d in flat if not (d in seen or seen.add(d))]
+    result = [d for d in flat if d is not None and not (d in seen or seen.add(d))]
+    return sorted(result)
 
 
 def handle_termination(signum: int | None = None, frame: FrameType | None = None) -> None:
