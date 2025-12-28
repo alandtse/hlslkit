@@ -81,9 +81,8 @@ Parse `CommunityShaders.log` to create the YAML configuration:
 python generate_shader_defines.py --log "E:\Documents\my games\Skyrim Special Edition\SKSE\CommunityShaders.log" --output shader_defines.yaml
 ```
 
--   `--log`: Path to the log file (required).
+-   `--log`: Path to the log file (default: `CommunityShaders.log`).
 -   `--output`: Output YAML file (default: `shader_defines.yaml`).
--   `--update-log`: Optional additional log (e.g., VR log) to merge configs.
 -   `--log-level`: Set the logging level (default: INFO, choices: DEBUG, INFO, WARNING, ERROR, CRITICAL).
 -   `-d/--debug`: Enable debug output.
 -   `-g/--gui`: Run with GUI (requires `gooey`).

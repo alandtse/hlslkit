@@ -10,6 +10,7 @@ copyright: Maintained by <a href="https://alandtse.com">Florian</a>.
 nav:
     - Home: index.md
     - Modules: modules.md
+    - Contributing: CONTRIBUTING.md
 plugins:
     - search
     - mkdocstrings:
