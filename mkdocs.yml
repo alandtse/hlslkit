@@ -5,7 +5,7 @@ site_description: Tools for automating HLSL shader compilation, diagnostics, and
 site_author: Alan Tse
 edit_uri: edit/main/docs/
 repo_name: alandtse/hlslkit
-copyright: Maintained by <a href="https://alandtse.com">Florian</a>.
+copyright: Maintained by <a href="https://github.com/alandtse/">alandtse</a>.
 
 nav:
     - Home: index.md
