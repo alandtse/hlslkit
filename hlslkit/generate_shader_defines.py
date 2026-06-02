@@ -459,12 +459,17 @@ def generate_yaml_data(shader_configs: dict, warnings: dict, errors: dict) -> di
         "common_pshader_defines": sorted(type_common["PSHADER"]),
         "common_vshader_defines": sorted(type_common["VSHADER"]),
         "common_cshader_defines": sorted(type_common["CSHADER"]),
-        "file_common_defines": file_type_common,
+        # Deterministic ordering: sort file keys, shader-type keys, and define
+        # lists so regenerated configs diff to only real changes (not log order).
+        "file_common_defines": {
+            f: {st: sorted(file_type_common[f][st]) for st in sorted(file_type_common[f])}
+            for f in sorted(file_type_common)
+        },
         "warnings": warnings,
         "errors": errors,
         "shaders": [],
     }
-    for file_name, file_configs in shader_configs.items():
+    for file_name, file_configs in sorted(shader_configs.items()):
         shader_entry = {"file": file_name, "configs": {}}
         for shader_type, configs in file_configs.items():
             if configs:
@@ -480,19 +485,24 @@ def generate_yaml_data(shader_configs: dict, warnings: dict, errors: dict) -> di
                         common_defines.extend(list(defines))
                 shader_entry["configs"][shader_type] = {
                     "common_defines": sorted(common_defines),
-                    "entries": [
-                        {
-                            "entry": config["entry"],
-                            "defines": sorted([
-                                d
-                                for d in config["defines"]
-                                if d not in global_common
-                                and d not in type_common[shader_type]
-                                and d not in file_type_common[file_name][shader_type]
-                            ]),
-                        }
-                        for config in configs
-                    ],
+                    # Sort entries deterministically (by entry name, then defines)
+                    # so output order doesn't depend on log/compile order.
+                    "entries": sorted(
+                        [
+                            {
+                                "entry": config["entry"],
+                                "defines": sorted([
+                                    d
+                                    for d in config["defines"]
+                                    if d not in global_common
+                                    and d not in type_common[shader_type]
+                                    and d not in file_type_common[file_name][shader_type]
+                                ]),
+                            }
+                            for config in configs
+                        ],
+                        key=lambda e: (e["entry"], e["defines"]),
+                    ),
                 }
         if shader_entry["configs"]:
             yaml_data["shaders"].append(shader_entry)
