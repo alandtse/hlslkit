@@ -504,6 +504,63 @@ def test_yaml_deduplication_and_nested_anchors():
             os.unlink(tmp_path)
 
 
+def test_generate_yaml_data_files_sorted():
+    """Shaders list is alphabetical regardless of insertion order."""
+    shader_configs = {
+        "z_last.hlsl": {"PSHADER": [{"entry": "main:1", "defines": []}]},
+        "a_first.hlsl": {"PSHADER": [{"entry": "main:2", "defines": []}]},
+        "m_middle.hlsl": {"PSHADER": [{"entry": "main:3", "defines": []}]},
+    }
+    yaml_data = generate_yaml_data(shader_configs, {}, {})
+    files = [s["file"] for s in yaml_data["shaders"]]
+    assert files == sorted(files)
+
+
+def test_generate_yaml_data_entries_sorted_by_entry_then_defines():
+    """Entries with the same entry name are sorted by their defines list."""
+    shader_configs = {
+        "test.hlsl": {
+            "PSHADER": [
+                {"entry": "main", "defines": ["Z=1"]},
+                {"entry": "main", "defines": ["A=1"]},
+                {"entry": "alpha", "defines": ["B=1"]},
+            ]
+        }
+    }
+    yaml_data = generate_yaml_data(shader_configs, {}, {})
+    entries = yaml_data["shaders"][0]["configs"]["PSHADER"]["entries"]
+    # "alpha" sorts before "main"; among the two "main" entries, ["A=1"] < ["Z=1"]
+    assert entries[0]["entry"] == "alpha"
+    assert entries[1]["entry"] == "main"
+    assert entries[1]["defines"] == ["A=1"]
+    assert entries[2]["entry"] == "main"
+    assert entries[2]["defines"] == ["Z=1"]
+
+
+def test_generate_yaml_data_file_common_defines_sorted():
+    """file_common_defines keys (files and shader types) are sorted."""
+    shader_configs = {
+        "z.hlsl": {
+            "PSHADER": [
+                {"entry": "main:1", "defines": ["COMMON=1", "X=1"]},
+                {"entry": "main:2", "defines": ["COMMON=1", "Y=1"]},
+            ]
+        },
+        "a.hlsl": {
+            "PSHADER": [
+                {"entry": "main:3", "defines": ["COMMON=1", "P=1"]},
+                {"entry": "main:4", "defines": ["COMMON=1", "Q=1"]},
+            ]
+        },
+    }
+    yaml_data = generate_yaml_data(shader_configs, {}, {})
+    file_keys = list(yaml_data["file_common_defines"].keys())
+    assert file_keys == sorted(file_keys)
+    for shader_type_dict in yaml_data["file_common_defines"].values():
+        shader_type_keys = list(shader_type_dict.keys())
+        assert shader_type_keys == sorted(shader_type_keys)
+
+
 def test_optimize_anchor_deduplication_simple():
     """Test that optimize_anchor_deduplication works with simple lists."""
 
