@@ -1,0 +1,1398 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tools for automating HLSL shader compilation, diagnostics, and define management.">
+      
+      
+        <meta name="author" content="Alan Tse">
+      
+      
+        <link rel="canonical" href="https://alandtse.github.io/hlslkit/">
+      
+      
+      
+        <link rel="next" href="modules/">
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.14">
+    
+    
+      
+        <title>hlslkit</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.342714a4.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="deep-orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#hlslkit" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="." title="hlslkit" class="md-header__button md-logo" aria-label="hlslkit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            hlslkit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Home
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="deep-orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/alandtse/hlslkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    alandtse/hlslkit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="." title="hlslkit" class="md-nav__button md-logo" aria-label="hlslkit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    hlslkit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/alandtse/hlslkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    alandtse/hlslkit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="." class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prerequisites
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Installation
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Installation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#local-development" class="md-nav__link">
+    <span class="md-ellipsis">
+      Local Development
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Workflow
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-calls" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example Calls
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Calls">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-generate-shader_definesyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Generate shader_defines.yaml
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-compile-shaders" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Compile Shaders
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Compile Shaders">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#advanced-warning-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      Advanced Warning Control
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-scan-buffer-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Scan Buffer Usage
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#table-generated-on-2025-05-24-200923" class="md-nav__link">
+    <span class="md-ellipsis">
+      Table generated on 2025-05-24 20:09:23
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Table generated on 2025-05-24 20:09:23">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#workflow-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      Workflow Example
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development" class="md-nav__link">
+    <span class="md-ellipsis">
+      Development
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Development">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Testing
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#code-quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      Code Quality
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Documentation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#building" class="md-nav__link">
+    <span class="md-ellipsis">
+      Building
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#contributing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Contributing
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cicd" class="md-nav__link">
+    <span class="md-ellipsis">
+      CI/CD
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cicd-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      CI/CD Integration
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CI/CD Integration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#github-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      GitHub Actions
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pypi-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      PyPI Installation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      Docker
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#license" class="md-nav__link">
+    <span class="md-ellipsis">
+      License
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Modules
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="CONTRIBUTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prerequisites
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Installation
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Installation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#local-development" class="md-nav__link">
+    <span class="md-ellipsis">
+      Local Development
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Workflow
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-calls" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example Calls
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Calls">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-generate-shader_definesyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Generate shader_defines.yaml
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-compile-shaders" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Compile Shaders
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Compile Shaders">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#advanced-warning-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      Advanced Warning Control
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-scan-buffer-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Scan Buffer Usage
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#table-generated-on-2025-05-24-200923" class="md-nav__link">
+    <span class="md-ellipsis">
+      Table generated on 2025-05-24 20:09:23
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Table generated on 2025-05-24 20:09:23">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#workflow-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      Workflow Example
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development" class="md-nav__link">
+    <span class="md-ellipsis">
+      Development
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Development">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Testing
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#code-quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      Code Quality
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Documentation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#building" class="md-nav__link">
+    <span class="md-ellipsis">
+      Building
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#contributing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Contributing
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cicd" class="md-nav__link">
+    <span class="md-ellipsis">
+      CI/CD
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cicd-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      CI/CD Integration
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CI/CD Integration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#github-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      GitHub Actions
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pypi-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      PyPI Installation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      Docker
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#license" class="md-nav__link">
+    <span class="md-ellipsis">
+      License
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="hlslkit">hlslkit<a class="headerlink" href="#hlslkit" title="Permanent link">&para;</a></h1>
+<p><a href="https://img.shields.io/github/v/release/alandtse/hlslkit"><img alt="Release" src="https://img.shields.io/github/v/release/alandtse/hlslkit" /></a>
+<a href="https://github.com/alandtse/hlslkit/actions/workflows/main.yml?query=branch%3Amain"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/alandtse/hlslkit/main.yml?branch=main" /></a>
+<a href="https://codecov.io/gh/alandtse/hlslkit"><img alt="codecov" src="https://codecov.io/gh/alandtse/hlslkit/graph/badge.svg?token=PSM93RVX67" /></a>
+<a href="https://img.shields.io/github/commit-activity/m/alandtse/hlslkit"><img alt="Commit activity" src="https://img.shields.io/github/commit-activity/m/alandtse/hlslkit" /></a>
+<a href="https://img.shields.io/github/license/alandtse/hlslkit"><img alt="License" src="https://img.shields.io/github/license/alandtse/hlslkit" /></a></p>
+<p>Tools for automating HLSL shader compilation, diagnostics, and define management, designed for projects like Skyrim Community Shaders.</p>
+<ul>
+<li><strong>GitHub repository</strong>: <a href="https://github.com/alandtse/hlslkit/">https://github.com/alandtse/hlslkit/</a></li>
+<li><strong>Documentation</strong>: <a href="https://alandtse.github.io/hlslkit/">https://alandtse.github.io/hlslkit/</a></li>
+</ul>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p><code>hlslkit</code> provides Python scripts to streamline HLSL shader workflows:</p>
+<ul>
+<li><strong><code>compile_shaders.py</code></strong>: Compiles shaders using <code>fxc.exe</code>, supports parallel compilation with dynamic job adjustment, and processes warnings/errors from a YAML configuration.</li>
+<li><strong><code>generate_shader_defines.py</code></strong>: Generates <code>shader_defines.yaml</code> from <code>CommunityShaders.log</code>, defining shader files, types, entries, and preprocessor defines.</li>
+<li><strong><code>buffer_scan.py</code></strong>: Scans HLSL files for buffer definitions, generates a markdown table of register usage, and detects conflicts across features.</li>
+</ul>
+<p>Key features:</p>
+<ul>
+<li>Robust path normalization (handles forward and backward slashes).</li>
+<li>Parallel compilation with CPU/memory-aware job scaling (requires <code>psutil</code>).</li>
+<li>Warning/error parsing and suppression for diagnostics.</li>
+<li>GitHub-integrated buffer reports with conflict detection.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Python 3.10+</strong></li>
+<li><strong>Poetry</strong>: For dependency management and virtual environment setup.</li>
+<li><strong>Dependencies</strong>: Defined in <code>pyproject.toml</code>:<ul>
+<li><strong>Required</strong>: <code>pyyaml</code>, <code>tqdm</code>, <code>py-markdown-table</code>, <code>psutil</code>, <code>pcpp</code>, <code>jellyfish</code>.</li>
+<li><strong>Optional</strong>: Install with <code>poetry install -E gui</code>:<ul>
+<li><code>gui</code>: <code>gooey</code> (GUI interface, Windows recommended)</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><strong>fxc.exe</strong>: DirectX shader compiler (included in Windows SDK or DirectX SDK).</li>
+<li><strong>CommunityShaders.log</strong>: Log file from Skyrim Community Shaders for <code>generate_shader_defines.py</code>.</li>
+</ul>
+<h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>
+<h3 id="local-development">Local Development<a class="headerlink" href="#local-development" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p>Clone the repository:</p>
+<p><code>bash
+git clone https://github.com/alandtse/hlslkit.git
+cd hlslkit</code></p>
+</li>
+<li>
+<p>Set up the environment using the Makefile:</p>
+<p><code>bash
+make install</code></p>
+<p>This installs Poetry dependencies, sets up the virtual environment, and configures pre-commit hooks.</p>
+</li>
+<li>
+<p>Ensure <code>fxc.exe</code> is in your PATH or specify its path with <code>--fxc</code>.</p>
+</li>
+</ol>
+<h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
+<h3 id="workflow">Workflow<a class="headerlink" href="#workflow" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p><strong>Generate Shader Defines</strong>:
+   Use <code>generate_shader_defines.py</code> to parse <code>CommunityShaders.log</code> and create <code>shader_defines.yaml</code>. This YAML defines shader configurations (files, types, entries, defines) for <code>compile_shaders.py</code>.</p>
+</li>
+<li>
+<p><strong>Compile Shaders</strong>:
+   Use <code>compile_shaders.py</code> to compile shaders based on <code>shader_defines.yaml</code>, outputting compiled shaders to a specified directory.</p>
+</li>
+<li>
+<p><strong>Scan Buffers</strong>:
+   Use <code>buffer_scan.py</code> to analyze HLSL files for buffer register usage and detect conflicts, generating a markdown report.</p>
+</li>
+</ol>
+<h3 id="example-calls">Example Calls<a class="headerlink" href="#example-calls" title="Permanent link">&para;</a></h3>
+<h4 id="1-generate-shader_definesyaml">1. Generate <code>shader_defines.yaml</code><a class="headerlink" href="#1-generate-shader_definesyaml" title="Permanent link">&para;</a></h4>
+<p>Parse <code>CommunityShaders.log</code> to create the YAML configuration:</p>
+<pre><code class="language-bash">python generate_shader_defines.py --log &quot;E:\Documents\my games\Skyrim Special Edition\SKSE\CommunityShaders.log&quot; --output shader_defines.yaml
+</code></pre>
+<ul>
+<li><code>--log</code>: Path to the log file (default: <code>CommunityShaders.log</code>).</li>
+<li><code>--output</code>: Output YAML file (default: <code>shader_defines.yaml</code>).</li>
+<li><code>--log-level</code>: Set the logging level (default: INFO, choices: DEBUG, INFO, WARNING, ERROR, CRITICAL).</li>
+<li><code>-d/--debug</code>: Enable debug output.</li>
+<li><code>-g/--gui</code>: Run with GUI (requires <code>gooey</code>).</li>
+</ul>
+<p>This generates <code>shader_defines.yaml</code>, e.g.:</p>
+<pre><code class="language-yaml">common_defines: []
+common_pshader_defines: []
+common_vshader_defines: []
+common_cshader_defines: []
+file_common_defines: {}
+warnings: {}
+errors: {}
+shaders:
+    - file: RunGrass.hlsl
+      configs:
+          VSHADER:
+              common_defines: []
+              entries:
+                  - entry: Grass:Vertex:4
+                    defines: [D3DCOMPILE_DEBUG]
+</code></pre>
+<p><strong>Note</strong>: Ensure the log contains valid compilation lines (e.g., <code>[D] Compiling ...</code>). Untagged errors (e.g., <code>RunGrass.hlsl(10): error X1000: syntax error</code>) are not parsed.</p>
+<h4 id="2-compile-shaders">2. Compile Shaders<a class="headerlink" href="#2-compile-shaders" title="Permanent link">&para;</a></h4>
+<p>Compile shaders using the generated YAML:</p>
+<pre><code class="language-bash">python compile_shaders.py --shader-dir build\ALL-WITH-AUTO-DEPLOYMENT\aio\Shaders --output-dir build\ShaderCache --config shader_defines.yaml --max-warnings 0
+</code></pre>
+<p>Or with custom options:</p>
+<pre><code class="language-bash">python compile_shaders.py --shader-dir build\ALL-WITH-AUTO-DEPLOYMENT\aio\Shaders --output-dir build\ShaderCache --config shader_defines.yaml --jobs 4 --max-warnings 0 --suppress-warnings X1519
+</code></pre>
+<ul>
+<li><code>--shader-dir</code>: Directory <strong>or file</strong> with HLSL files (default: <code>build/aio/Shaders</code>). If a file is provided, only that shader (with all its config variants) will be compiled.</li>
+<li><code>--output-dir</code>: Output directory for compiled shaders (default: <code>build/ShaderCache</code>).</li>
+<li><code>--config</code>: Path to <code>shader_defines.yaml</code> (default: <code>shader_defines.yaml</code>).</li>
+<li><code>--jobs</code>: Number of parallel jobs (default: dynamic based on CPU).</li>
+<li>
+<p><code>--max-warnings</code>: Maximum allowed warnings:</p>
+<ul>
+<li><strong>Positive values</strong> (e.g., <code>5</code>): Maximum number of NEW warnings allowed.</li>
+<li><strong>Negative values</strong> (e.g., <code>-3</code>): Must eliminate this many existing baseline warnings up to complete elimination of all warnings.</li>
+<li><strong>Zero</strong> (<code>0</code>): No new warnings allowed (default).</li>
+</ul>
+</li>
+<li>
+<p><code>--suppress-warnings</code>: Comma-separated warning codes to suppress (e.g., <code>X1519,X3206</code>).</p>
+</li>
+<li><code>--fxc</code>: Path to <code>fxc.exe</code> (optional if in PATH).</li>
+<li><code>--strip-debug-defines</code>: Remove debug defines (e.g., <code>D3DCOMPILE_DEBUG</code>).</li>
+<li><code>--optimization-level</code>: Optimization level (0-3, default: 1 or 3 if stripping debug defines).</li>
+<li><code>--force-partial-precision</code>: Use 16-bit floats for performance.</li>
+<li><code>--extra-includes</code>: Comma-separated list of additional include directories for <code>fxc.exe</code> (these will be added as <code>/I</code> flags in addition to the shader's parent directory and shader-dir).</li>
+<li><code>-d/--debug</code>: Enable debug output.</li>
+<li><code>-g/--gui</code>: Run with GUI (requires <code>gooey</code>).</li>
+</ul>
+<p><strong>Note:</strong> The parent directory of each shader file is always included as an <code>/I</code> path for <code>fxc.exe</code>.</p>
+<p><strong>Compile a Single Shader File Example:</strong></p>
+<p>You can compile just one shader file (with all its variants from the config) by passing the file path to <code>--shader-dir</code>:</p>
+<pre><code class="language-bash">python compile_shaders.py --shader-dir path/to/Lighting.hlsl --output-dir build/ShaderCache --config shader_defines.yaml
+</code></pre>
+<p><strong>Additional Include Directories Example:</strong></p>
+<p>You can specify extra include directories for <code>fxc.exe</code> using <code>--extra-includes</code>:</p>
+<pre><code class="language-bash">python compile_shaders.py --shader-dir src --output-dir build --config shader_defines.yaml --extra-includes path/to/includes1,path/to/includes2
+</code></pre>
+<h5 id="advanced-warning-control">Advanced Warning Control<a class="headerlink" href="#advanced-warning-control" title="Permanent link">&para;</a></h5>
+<p>The <code>--max-warnings</code> parameter supports sophisticated warning management for CI/CD environments:</p>
+<p><strong>Positive Values (Standard Limits)</strong>:</p>
+<pre><code class="language-bash"># Allow up to 5 new warnings
+python compile_shaders.py --max-warnings 5 [other options...]
+</code></pre>
+<p><strong>Negative Values (Warning Reduction Requirements)</strong>:</p>
+<pre><code class="language-bash"># Require elimination of 3 existing baseline warnings
+python compile_shaders.py --max-warnings -3 [other options...]
+
+# Require elimination of 10 warnings (if baseline has fewer, target becomes zero warnings)
+python compile_shaders.py --max-warnings -10 [other options...]
+</code></pre>
+<p><strong>How it works</strong>:</p>
+<ul>
+<li><strong>Baseline warnings</strong>: Stored in <code>shader_defines.yaml</code> from previous compilations</li>
+<li><strong>New warnings</strong>: Detected by comparing current compilation against baseline</li>
+<li><strong>Negative values</strong>: Calculate target warning count as <code>baseline_count - abs(max_warnings)</code></li>
+<li><strong>Zero targeting</strong>: If required reduction exceeds baseline count, target becomes 0 warnings</li>
+</ul>
+<p><strong>Example scenarios</strong>:</p>
+<ul>
+<li>10 baseline warnings, <code>--max-warnings -3</code> → Target: 7 total warnings (must eliminate 3)</li>
+<li>5 baseline warnings, <code>--max-warnings -10</code> → Target: 0 total warnings (must eliminate all)</li>
+<li>0 baseline warnings, <code>--max-warnings -5</code> → Target: 0 total warnings (already achieved)</li>
+</ul>
+<p>This enables progressive warning cleanup in CI environments where teams can set requirements like "each PR must eliminate at least 2 warnings" while still allowing some new warnings if the overall count decreases.</p>
+<h4 id="3-scan-buffer-usage">3. Scan Buffer Usage<a class="headerlink" href="#3-scan-buffer-usage" title="Permanent link">&para;</a></h4>
+<p>Generate a markdown table of buffer register usage:</p>
+<pre><code class="language-bash">python buffer_scan.py
+</code></pre>
+<ul>
+<li>Run in a directory with HLSL files.</li>
+<li>
+<p>Outputs a markdown table to stdout, e.g.:</p>
+<p>```markdown</p>
+<h2 id="table-generated-on-2025-05-24-200923">Table generated on 2025-05-24 20:09:23<a class="headerlink" href="#table-generated-on-2025-05-24-200923" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Register</th>
+<th>Feature</th>
+<th>Type</th>
+<th>Name</th>
+<th>File</th>
+<th>Register Type</th>
+<th>Buffer Type</th>
+<th>Number</th>
+<th>PSHADER</th>
+<th>VSHADER</th>
+<th>VR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>t0</td>
+<td>Grass</td>
+<td>Buffer</td>
+<td>myBuffer</td>
+<td><a href="...">src/RunGrass.hlsl:5</a></td>
+<td>SRV</td>
+<td>t</td>
+<td>0</td>
+<td>False</td>
+<td>True</td>
+<td>False</td>
+</tr>
+<tr>
+<td>```</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+</li>
+<li>
+<p>Detects conflicts (e.g., same register used by multiple features).</p>
+</li>
+</ul>
+<h3 id="workflow-example">Workflow Example<a class="headerlink" href="#workflow-example" title="Permanent link">&para;</a></h3>
+<p>To compile shaders for Skyrim Community Shaders:</p>
+<ol>
+<li>Generate the YAML:
+    <code>bash
+    python generate_shader_defines.py --log "E:\Documents\my games\Skyrim Special Edition\SKSE\CommunityShaders.log"</code></li>
+<li>Compile shaders:
+    <code>bash
+    python compile_shaders.py --shader-dir build\ALL-WITH-AUTO-DEPLOYMENT\aio\Shaders --output-dir build\ShaderCache --config shader_defines.yaml --jobs 4 --max-warnings 0</code></li>
+<li>Check buffer conflicts:
+    <code>bash
+    python buffer_scan.py</code></li>
+</ol>
+<h2 id="development">Development<a class="headerlink" href="#development" title="Permanent link">&para;</a></h2>
+<p>To contribute to <code>hlslkit</code>, clone the repository and set up the development environment:</p>
+<ol>
+<li>
+<p>Clone the repository:</p>
+<p><code>bash
+git clone https://github.com/alandtse/hlslkit.git
+cd hlslkit</code></p>
+</li>
+<li>
+<p>Set up the environment:
+    <code>bash
+    make install</code></p>
+</li>
+</ol>
+<h3 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h3>
+<p>Run tests with coverage:</p>
+<pre><code class="language-bash">make test
+</code></pre>
+<p>This executes <code>pytest</code> with coverage, generating an XML report. View the HTML report:</p>
+<pre><code class="language-bash">poetry run pytest --cov --cov-config=pyproject.toml --cov-report=html
+open htmlcov/index.html
+</code></pre>
+<p>Tests cover:</p>
+<ul>
+<li>Path normalization (forward/backward slashes).</li>
+<li>Shader compilation (success, missing files, warnings, timeouts).</li>
+<li>YAML parsing and define flattening.</li>
+<li>Log parsing (configs, warnings, tagged errors).</li>
+<li>Buffer scanning (register usage, conflicts, <code>#line</code> directives).</li>
+</ul>
+<p><strong>Note</strong>: Untagged errors (e.g., <code>error X1000: syntax error</code>) in logs are not parsed by <code>generate_shader_defines.py</code>.</p>
+<h3 id="code-quality">Code Quality<a class="headerlink" href="#code-quality" title="Permanent link">&para;</a></h3>
+<p>Run linting, type checking, and dependency checks:</p>
+<pre><code class="language-bash">make check
+</code></pre>
+<p>This runs:</p>
+<ul>
+<li>Poetry lock file consistency check.</li>
+<li>Pre-commit hooks (linting).</li>
+<li>Pyright for static type checking.</li>
+<li>Deptry for obsolete dependencies.</li>
+</ul>
+<h3 id="documentation">Documentation<a class="headerlink" href="#documentation" title="Permanent link">&para;</a></h3>
+<p>Build and serve documentation with MkDocs:</p>
+<pre><code class="language-bash">make docs
+</code></pre>
+<p>Test documentation builds:</p>
+<pre><code class="language-bash">make docs-test
+</code></pre>
+<h3 id="building">Building<a class="headerlink" href="#building" title="Permanent link">&para;</a></h3>
+<p>Build a wheel file:</p>
+<pre><code class="language-bash">make build
+</code></pre>
+<h3 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Submit issues or pull requests on <a href="https://github.com/alandtse/hlslkit">GitHub</a>.</li>
+<li>Run <code>make check</code> and <code>make test</code> before submitting changes.</li>
+<li>Follow the test suite and coverage guidelines.</li>
+<li>See <a href="CONTRIBUTING/">CONTRIBUTING.md</a> for branching, testing, code quality checks, and submitting pull requests.</li>
+</ul>
+<h3 id="cicd">CI/CD<a class="headerlink" href="#cicd" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Triggers</strong>: Pull requests, merges to <code>main</code>, or new releases.</li>
+<li><strong>Publishing</strong>: Configure PyPI/Artifactory per <a href="https://fpgmaas.github.io/cookiecutter-poetry/features/publishing/#set-up-for-pypi">cookiecutter-poetry</a>.</li>
+<li><strong>Documentation</strong>: Enable MkDocs per <a href="https://fpgmaas.github.io/cookiecutter-poetry/features/mkdocs/#enabling-the-documentation-on-github">cookiecutter-poetry</a>.</li>
+<li><strong>Codecov</strong>: Enable coverage reports per <a href="https://fpgmaas.github.io/cookiecutter-poetry/features/codecov/">cookiecutter-poetry</a>.</li>
+</ul>
+<h2 id="cicd-integration">CI/CD Integration<a class="headerlink" href="#cicd-integration" title="Permanent link">&para;</a></h2>
+<h3 id="github-actions">GitHub Actions<a class="headerlink" href="#github-actions" title="Permanent link">&para;</a></h3>
+<p>For CI/CD pipelines using a Windows runner (e.g., <a href="https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Readme.md">windows-latest</a>), you can install hlslkit directly from GitHub using pip:</p>
+<pre><code class="language-yaml">- name: Setup Python
+  uses: actions/setup-python@v5
+  with:
+      python-version: &quot;3.11&quot;
+
+- name: Install hlslkit
+  run: pip install git+https://github.com/alandtse/hlslkit.git
+  shell: bash
+
+- name: Validate shader compilation
+  run: hlslkit-compile --shader-dir build/Shaders --output-dir build/ShaderCache --config shader_defines.yaml --max-warnings 0
+  shell: bash
+
+- name: Run buffer scan
+  run: hlslkit-buffer-scan &gt; buffer-scan-results.md
+  shell: bash
+</code></pre>
+<h3 id="pypi-installation">PyPI Installation<a class="headerlink" href="#pypi-installation" title="Permanent link">&para;</a></h3>
+<p>Once published to PyPI, you can install hlslkit using:</p>
+<pre><code class="language-bash">pip install hlslkit
+</code></pre>
+<h3 id="docker">Docker<a class="headerlink" href="#docker" title="Permanent link">&para;</a></h3>
+<p>You can also use the included Dockerfile for containerized builds:</p>
+<pre><code class="language-bash">docker build -t hlslkit:latest .
+docker run --rm -v $(pwd):/workspace -w /workspace hlslkit:latest hlslkit-compile --help
+</code></pre>
+<h2 id="limitations">Limitations<a class="headerlink" href="#limitations" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>generate_shader_defines.py</strong>: Only parses <code>[E]</code> or <code>[W]</code> tagged errors in logs. Untagged errors (e.g., <code>RunGrass.hlsl(10): error X1000: syntax error</code>) are ignored.</li>
+<li><strong>compile_shaders.py</strong>: Malformed YAML in <code>shader_defines.yaml</code> raises uncaught errors. Validate YAML before running.</li>
+<li><strong>buffer_scan.py</strong>: Requires <code>pcpp</code> for preprocessing and assumes HLSL files are in the project directory or subdirectories.</li>
+</ul>
+<h2 id="license">License<a class="headerlink" href="#license" title="Permanent link">&para;</a></h2>
+<p><a href="COPYING">GPL-3.0-or-later</a>.</p>
+<hr />
+<p>Repository initiated with <a href="https://github.com/fpgmaas/cookiecutter-poetry">fpgmaas/cookiecutter-poetry</a>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Maintained by <a href="https://github.com/alandtse/">alandtse</a>.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        <div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/alandtse/hlslkit" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://pypi.org/project/hlslkit" target="_blank" rel="noopener" title="pypi.org" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 404c11.1 0 20.1 9.1 20.1 20.3 0 11.3-9 20.4-20.1 20.4-11 0-20.1-9.2-20.1-20.4.1-11.3 9.1-20.3 20.1-20.3M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.7-142.6c-11.1 0-20.1-9.1-20.1-20.3.1-11.3 9-20.4 20.1-20.4 11 0 20.1 9.2 20.1 20.4s-9 20.3-20.1 20.3"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": ".", "features": [], "search": "assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="assets/javascripts/bundle.13a4f30d.min.js"></script>
+      
+    
+  </body>
+</html>
