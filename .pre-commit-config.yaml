@@ -1,3 +1,10 @@
+ci:
+    # pre-commit.ci's sandbox has no `poetry`, so the local hooks below that run
+    # via `poetry run` (pytest, pyright, mkdocs-build) fail there with
+    # "Executable `poetry` not found". They are already covered by the `quality`
+    # and `tests-and-type-check` GitHub Actions jobs, so skip them on pre-commit.ci.
+    skip: [pytest, pyright, mkdocs-build]
+
 repos:
     - repo: https://github.com/pre-commit/pre-commit-hooks
       rev: "v4.4.0"
