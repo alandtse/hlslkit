@@ -1,6 +1,6 @@
 """Tests for the HLSL include dependency graph and incremental selection."""
 
-from hlslkit.compile_shaders import filter_tasks_by_changed_files
+from hlslkit.compile_shaders import filter_tasks_by_changed_files, parse_changed_files
 from hlslkit.include_graph import (
     build_include_graph,
     compute_affected_files,
@@ -160,3 +160,47 @@ def test_filter_backslash_paths_normalized(tmp_path):
     tasks, noop = filter_tasks_by_changed_files(_tasks(), ["Common\\Math.hlsli"], str(tmp_path))
     assert noop is False
     assert {t[0] for t in tasks} == {"Lighting.hlsl", "Water.hlsl"}
+
+
+# --- parse_changed_files (CLI argument parsing) ---
+
+
+def test_parse_changed_files_comma_separated():
+    assert parse_changed_files("Lighting.hlsl, Water.hlsl ,") == ["Lighting.hlsl", "Water.hlsl"]
+
+
+def test_parse_changed_files_empty():
+    assert parse_changed_files("") == []
+    assert parse_changed_files("   ") == []
+
+
+def test_parse_changed_files_from_file(tmp_path):
+    list_file = tmp_path / "changed.txt"
+    list_file.write_text("Common/Color.hlsli\nLightLimitFix/Common.hlsli\n\n", encoding="utf-8")
+    assert parse_changed_files(f"@{list_file}") == ["Common/Color.hlsli", "LightLimitFix/Common.hlsli"]
+
+
+def test_parse_changed_files_missing_file_returns_empty():
+    # A missing @file is logged and treated as "no changes" (caller decides policy).
+    assert parse_changed_files("@/nonexistent/path/changed.txt") == []
+
+
+# --- include graph edge cases ---
+
+
+def test_unresolved_include_is_dropped(tmp_path):
+    """An #include to a file that doesn't exist is simply not an edge."""
+    _write(tmp_path / "A.hlsl", '#include "DoesNotExist.hlsli"\n#include "B.hlsli"\n')
+    _write(tmp_path / "B.hlsli", "// real\n")
+    graph = build_include_graph(str(tmp_path))
+    assert graph["A.hlsl"] == {"B.hlsli"}
+
+
+def test_include_outside_tree_is_dropped(tmp_path):
+    """An include that resolves above the shader root is not keyed into the graph."""
+    sibling = tmp_path / "outside.hlsli"
+    sibling.write_text("// outside\n", encoding="utf-8")
+    root = tmp_path / "shaders"
+    _write(root / "A.hlsl", '#include "../outside.hlsli"\n')
+    graph = build_include_graph(str(root))
+    assert graph["A.hlsl"] == set()
