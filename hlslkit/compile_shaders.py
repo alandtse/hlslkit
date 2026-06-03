@@ -1068,8 +1068,8 @@ def parse_changed_files(value: str) -> list[str]:
         try:
             with open(list_path, encoding="utf-8") as f:
                 entries = f.read().splitlines()
-        except OSError as e:
-            logging.exception(f"--changed-files: could not read list file '{list_path}': {e}")
+        except OSError:
+            logging.exception("--changed-files: could not read list file '%s'", list_path)
             return []
     else:
         entries = value.split(",")
