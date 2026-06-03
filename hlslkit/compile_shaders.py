@@ -34,6 +34,12 @@ from types import FrameType
 import yaml
 from tqdm import tqdm
 
+from hlslkit.include_graph import (
+    build_include_graph,
+    normalize_rel,
+    select_affected_entrypoints,
+)
+
 try:
     import psutil
 
@@ -1017,6 +1023,17 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
         default=defaults.get("extra-includes", ""),
         help="Comma-separated list of additional include directories for fxc.exe",
     )
+    parser.add_argument(
+        "--changed-files",
+        default=defaults.get("changed-files", ""),
+        help=(
+            "Incremental validation: comma-separated list of changed shader files "
+            "(relative to --shader-dir), or @path to read newline-separated paths "
+            "from a file. Only entry-point shaders that transitively #include a "
+            "changed file are compiled. Any changed path not found in the shader "
+            "tree triggers a safe fallback to full validation."
+        ),
+    )
     if not is_gui_mode:
         parser.add_argument("-g", "--gui", action="store_true", help="Run with GUI")
     args = parser.parse_args()
@@ -1031,7 +1048,32 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
     else:
         args.debug_defines_set = None
 
+    args.changed_files_list = parse_changed_files(args.changed_files)
+
     return args
+
+
+def parse_changed_files(value: str) -> list[str]:
+    """Parse the ``--changed-files`` argument into a list of paths.
+
+    Accepts a comma-separated list, or ``@path`` to read newline-separated
+    paths from a file (handy for long CI change sets that exceed shell limits).
+    Returns an empty list when no value is given (full validation).
+    """
+    if not value or not value.strip():
+        return []
+    value = value.strip()
+    if value.startswith("@"):
+        list_path = value[1:]
+        try:
+            with open(list_path, encoding="utf-8") as f:
+                entries = f.read().splitlines()
+        except OSError as e:
+            logging.exception(f"--changed-files: could not read list file '{list_path}': {e}")
+            return []
+    else:
+        entries = value.split(",")
+    return [e.strip() for e in entries if e.strip()]
 
 
 def setup_environment(args: argparse.Namespace) -> tuple[int, int | None, bool]:
@@ -1100,6 +1142,58 @@ def adjust_target_jobs(
     return target_jobs, "no adjustment"
 
 
+def filter_tasks_by_changed_files(
+    config_tasks: list[tuple], changed_files: list[str], shader_dir: str
+) -> tuple[list[tuple], bool]:
+    """Narrow config tasks to those affected by a set of changed files.
+
+    Builds the ``#include`` dependency graph for ``shader_dir`` and keeps only
+    the compilation tasks whose entry-point file transitively includes (or is)
+    a changed file.
+
+    Safety contract: if any changed path cannot be located in the shader tree,
+    this returns the **full** task list unchanged so validation is never
+    silently narrowed on an unexpected input (renamed/moved files, a path the
+    caller failed to translate, etc.).
+
+    Args:
+        config_tasks: Tasks from :func:`parse_shader_configs`; ``task[0]`` is the
+            entry-point file path relative to the shader root.
+        changed_files: Changed shader files, relative to ``shader_dir``.
+        shader_dir: Root directory of the assembled shader sources.
+
+    Returns:
+        ``(tasks, incremental_noop)``. ``incremental_noop`` is True only when the
+        changed files resolved cleanly but affect zero entry-point shaders
+        (a legitimate "nothing to do", distinct from an error).
+    """
+    graph = build_include_graph(shader_dir)
+    entry_files = {normalize_rel(task[0]) for task in config_tasks}
+
+    normalized_changed = []
+    for changed in changed_files:
+        norm = normalize_rel(changed.replace("\\", "/"))
+        if norm not in graph:
+            logging.warning(
+                f"Incremental validation: changed file '{changed}' not found in shader tree "
+                f"'{shader_dir}'; falling back to FULL validation for safety."
+            )
+            return config_tasks, False
+        normalized_changed.append(norm)
+
+    affected_entries = select_affected_entrypoints(graph, normalized_changed, entry_files)
+    if not affected_entries:
+        return [], True
+
+    filtered = [task for task in config_tasks if normalize_rel(task[0]) in affected_entries]
+    logging.info(
+        f"Incremental validation: {len(affected_entries)}/{len(entry_files)} entry-point shaders "
+        f"affected by {len(normalized_changed)} changed file(s) -> "
+        f"{len(filtered)}/{len(config_tasks)} variants selected."
+    )
+    return filtered, False
+
+
 def initialize_compilation(
     args: argparse.Namespace, cpu_count: int, physical_cores: int | None, is_ci: bool
 ) -> tuple[int, int, str, list[tuple]]:
@@ -1137,6 +1231,19 @@ def initialize_compilation(
 
     tasks = []
     config_tasks = parse_shader_configs(args.config)
+
+    # Incremental validation: narrow config_tasks to entry-point shaders that
+    # transitively include a changed file. Only meaningful in directory mode
+    # (single-file mode already targets one shader).
+    changed_files = getattr(args, "changed_files_list", None)
+    if changed_files and not os.path.isfile(args.shader_dir):
+        config_tasks, incremental_noop = filter_tasks_by_changed_files(config_tasks, changed_files, args.shader_dir)
+        if incremental_noop:
+            logging.info(
+                "Incremental validation: no entry-point shaders are affected by the changed files; nothing to compile."
+            )
+            return max_workers, target_jobs, jobs_reason, []
+
     # If shader_dir is a file, only compile that file (with all its variants from config)
     if os.path.isfile(args.shader_dir):
         shader_file_path = os.path.abspath(args.shader_dir)
@@ -1482,7 +1589,7 @@ def analyze_and_report_results(
         logging.warning("\n*** FILE-LEVEL ISSUE SUMMARY:")
         for file_path, stats in sorted(file_summary.items(), key=lambda x: x[1]["new"], reverse=True):
             logging.warning(
-                f"  {file_path}: {stats['new']} new issues " f"(baseline: {stats['baseline']}, total: {stats['total']})"
+                f"  {file_path}: {stats['new']} new issues (baseline: {stats['baseline']}, total: {stats['total']})"
             )
         logging.warning("")
 
