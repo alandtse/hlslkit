@@ -8,34 +8,34 @@
 
 Tools for automating HLSL shader compilation, diagnostics, and define management, designed for projects like Skyrim Community Shaders.
 
--   **GitHub repository**: <https://github.com/alandtse/hlslkit/>
--   **Documentation**: <https://alandtse.github.io/hlslkit/>
+- **GitHub repository**: <https://github.com/alandtse/hlslkit/>
+- **Documentation**: <https://alandtse.github.io/hlslkit/>
 
 ## Overview
 
 `hlslkit` provides Python scripts to streamline HLSL shader workflows:
 
--   **`compile_shaders.py`**: Compiles shaders using `fxc.exe`, supports parallel compilation with dynamic job adjustment, and processes warnings/errors from a YAML configuration.
--   **`generate_shader_defines.py`**: Generates `shader_defines.yaml` from `CommunityShaders.log`, defining shader files, types, entries, and preprocessor defines.
--   **`buffer_scan.py`**: Scans HLSL files for buffer definitions, generates a markdown table of register usage, and detects conflicts across features.
+- **`compile_shaders.py`**: Compiles shaders using `fxc.exe`, supports parallel compilation with dynamic job adjustment, and processes warnings/errors from a YAML configuration.
+- **`generate_shader_defines.py`**: Generates `shader_defines.yaml` from `CommunityShaders.log`, defining shader files, types, entries, and preprocessor defines.
+- **`buffer_scan.py`**: Scans HLSL files for buffer definitions, generates a markdown table of register usage, and detects conflicts across features.
 
 Key features:
 
--   Robust path normalization (handles forward and backward slashes).
--   Parallel compilation with CPU/memory-aware job scaling (requires `psutil`).
--   Warning/error parsing and suppression for diagnostics.
--   GitHub-integrated buffer reports with conflict detection.
+- Robust path normalization (handles forward and backward slashes).
+- Parallel compilation with CPU/memory-aware job scaling (requires `psutil`).
+- Warning/error parsing and suppression for diagnostics.
+- GitHub-integrated buffer reports with conflict detection.
 
 ## Prerequisites
 
--   **Python 3.10+**
--   **Poetry**: For dependency management and virtual environment setup.
--   **Dependencies**: Defined in `pyproject.toml`:
-    -   **Required**: `pyyaml`, `tqdm`, `py-markdown-table`, `psutil`, `pcpp`, `jellyfish`.
-    -   **Optional**: Install with `poetry install -E gui`:
-        -   `gui`: `gooey` (GUI interface, Windows recommended)
--   **fxc.exe**: DirectX shader compiler (included in Windows SDK or DirectX SDK).
--   **CommunityShaders.log**: Log file from Skyrim Community Shaders for `generate_shader_defines.py`.
+- **Python 3.10+**
+- **Poetry**: For dependency management and virtual environment setup.
+- **Dependencies**: Defined in `pyproject.toml`:
+    - **Required**: `pyyaml`, `tqdm`, `py-markdown-table`, `psutil`, `pcpp`, `jellyfish`.
+    - **Optional**: Install with `poetry install -E gui`:
+        - `gui`: `gooey` (GUI interface, Windows recommended)
+- **fxc.exe**: DirectX shader compiler (included in Windows SDK or DirectX SDK).
+- **CommunityShaders.log**: Log file from Skyrim Community Shaders for `generate_shader_defines.py`.
 
 ## Installation
 
@@ -81,11 +81,11 @@ Parse `CommunityShaders.log` to create the YAML configuration:
 python generate_shader_defines.py --log "E:\Documents\my games\Skyrim Special Edition\SKSE\CommunityShaders.log" --output shader_defines.yaml
 ```
 
--   `--log`: Path to the log file (default: `CommunityShaders.log`).
--   `--output`: Output YAML file (default: `shader_defines.yaml`).
--   `--log-level`: Set the logging level (default: INFO, choices: DEBUG, INFO, WARNING, ERROR, CRITICAL).
--   `-d/--debug`: Enable debug output.
--   `-g/--gui`: Run with GUI (requires `gooey`).
+- `--log`: Path to the log file (default: `CommunityShaders.log`).
+- `--output`: Output YAML file (default: `shader_defines.yaml`).
+- `--log-level`: Set the logging level (default: INFO, choices: DEBUG, INFO, WARNING, ERROR, CRITICAL).
+- `-d/--debug`: Enable debug output.
+- `-g/--gui`: Run with GUI (requires `gooey`).
 
 This generates `shader_defines.yaml`, e.g.:
 
@@ -123,24 +123,23 @@ Or with custom options:
 python compile_shaders.py --shader-dir build\ALL-WITH-AUTO-DEPLOYMENT\aio\Shaders --output-dir build\ShaderCache --config shader_defines.yaml --jobs 4 --max-warnings 0 --suppress-warnings X1519
 ```
 
--   `--shader-dir`: Directory **or file** with HLSL files (default: `build/aio/Shaders`). If a file is provided, only that shader (with all its config variants) will be compiled.
--   `--output-dir`: Output directory for compiled shaders (default: `build/ShaderCache`).
--   `--config`: Path to `shader_defines.yaml` (default: `shader_defines.yaml`).
--   `--jobs`: Number of parallel jobs (default: dynamic based on CPU).
--   `--max-warnings`: Maximum allowed warnings:
+- `--shader-dir`: Directory **or file** with HLSL files (default: `build/aio/Shaders`). If a file is provided, only that shader (with all its config variants) will be compiled.
+- `--output-dir`: Output directory for compiled shaders (default: `build/ShaderCache`).
+- `--config`: Path to `shader_defines.yaml` (default: `shader_defines.yaml`).
+- `--jobs`: Number of parallel jobs (default: dynamic based on CPU).
+- `--max-warnings`: Maximum allowed warnings:
+    - **Positive values** (e.g., `5`): Maximum number of NEW warnings allowed.
+    - **Negative values** (e.g., `-3`): Must eliminate this many existing baseline warnings up to complete elimination of all warnings.
+    - **Zero** (`0`): No new warnings allowed (default).
 
-    -   **Positive values** (e.g., `5`): Maximum number of NEW warnings allowed.
-    -   **Negative values** (e.g., `-3`): Must eliminate this many existing baseline warnings up to complete elimination of all warnings.
-    -   **Zero** (`0`): No new warnings allowed (default).
-
--   `--suppress-warnings`: Comma-separated warning codes to suppress (e.g., `X1519,X3206`).
--   `--fxc`: Path to `fxc.exe` (optional if in PATH).
--   `--strip-debug-defines`: Remove debug defines (e.g., `D3DCOMPILE_DEBUG`).
--   `--optimization-level`: Optimization level (0-3, default: 1 or 3 if stripping debug defines).
--   `--force-partial-precision`: Use 16-bit floats for performance.
--   `--extra-includes`: Comma-separated list of additional include directories for `fxc.exe` (these will be added as `/I` flags in addition to the shader's parent directory and shader-dir).
--   `-d/--debug`: Enable debug output.
--   `-g/--gui`: Run with GUI (requires `gooey`).
+- `--suppress-warnings`: Comma-separated warning codes to suppress (e.g., `X1519,X3206`).
+- `--fxc`: Path to `fxc.exe` (optional if in PATH).
+- `--strip-debug-defines`: Remove debug defines (e.g., `D3DCOMPILE_DEBUG`).
+- `--optimization-level`: Optimization level (0-3, default: 1 or 3 if stripping debug defines).
+- `--force-partial-precision`: Use 16-bit floats for performance.
+- `--extra-includes`: Comma-separated list of additional include directories for `fxc.exe` (these will be added as `/I` flags in addition to the shader's parent directory and shader-dir).
+- `-d/--debug`: Enable debug output.
+- `-g/--gui`: Run with GUI (requires `gooey`).
 
 **Note:** The parent directory of each shader file is always included as an `/I` path for `fxc.exe`.
 
@@ -183,16 +182,16 @@ python compile_shaders.py --max-warnings -10 [other options...]
 
 **How it works**:
 
--   **Baseline warnings**: Stored in `shader_defines.yaml` from previous compilations
--   **New warnings**: Detected by comparing current compilation against baseline
--   **Negative values**: Calculate target warning count as `baseline_count - abs(max_warnings)`
--   **Zero targeting**: If required reduction exceeds baseline count, target becomes 0 warnings
+- **Baseline warnings**: Stored in `shader_defines.yaml` from previous compilations
+- **New warnings**: Detected by comparing current compilation against baseline
+- **Negative values**: Calculate target warning count as `baseline_count - abs(max_warnings)`
+- **Zero targeting**: If required reduction exceeds baseline count, target becomes 0 warnings
 
 **Example scenarios**:
 
--   10 baseline warnings, `--max-warnings -3` → Target: 7 total warnings (must eliminate 3)
--   5 baseline warnings, `--max-warnings -10` → Target: 0 total warnings (must eliminate all)
--   0 baseline warnings, `--max-warnings -5` → Target: 0 total warnings (already achieved)
+- 10 baseline warnings, `--max-warnings -3` → Target: 7 total warnings (must eliminate 3)
+- 5 baseline warnings, `--max-warnings -10` → Target: 0 total warnings (must eliminate all)
+- 0 baseline warnings, `--max-warnings -5` → Target: 0 total warnings (already achieved)
 
 This enables progressive warning cleanup in CI environments where teams can set requirements like "each PR must eliminate at least 2 warnings" while still allowing some new warnings if the overall count decreases.
 
@@ -204,8 +203,8 @@ Generate a markdown table of buffer register usage:
 python buffer_scan.py
 ```
 
--   Run in a directory with HLSL files.
--   Outputs a markdown table to stdout, e.g.:
+- Run in a directory with HLSL files.
+- Outputs a markdown table to stdout, e.g.:
 
     ```markdown
     ## Table generated on 2025-05-24 20:09:23
@@ -215,7 +214,7 @@ python buffer_scan.py
     | t0       | Grass   | Buffer | myBuffer | [src/RunGrass.hlsl:5](...) | SRV           | t           | 0      | False   | True    | False |
     ```
 
--   Detects conflicts (e.g., same register used by multiple features).
+- Detects conflicts (e.g., same register used by multiple features).
 
 ### Workflow Example
 
@@ -267,11 +266,11 @@ open htmlcov/index.html
 
 Tests cover:
 
--   Path normalization (forward/backward slashes).
--   Shader compilation (success, missing files, warnings, timeouts).
--   YAML parsing and define flattening.
--   Log parsing (configs, warnings, tagged errors).
--   Buffer scanning (register usage, conflicts, `#line` directives).
+- Path normalization (forward/backward slashes).
+- Shader compilation (success, missing files, warnings, timeouts).
+- YAML parsing and define flattening.
+- Log parsing (configs, warnings, tagged errors).
+- Buffer scanning (register usage, conflicts, `#line` directives).
 
 **Note**: Untagged errors (e.g., `error X1000: syntax error`) in logs are not parsed by `generate_shader_defines.py`.
 
@@ -285,10 +284,10 @@ make check
 
 This runs:
 
--   Poetry lock file consistency check.
--   Pre-commit hooks (linting).
--   Pyright for static type checking.
--   Deptry for obsolete dependencies.
+- Poetry lock file consistency check.
+- Pre-commit hooks (linting).
+- Pyright for static type checking.
+- Deptry for obsolete dependencies.
 
 ### Documentation
 
@@ -314,17 +313,17 @@ make build
 
 ### Contributing
 
--   Submit issues or pull requests on [GitHub](https://github.com/alandtse/hlslkit).
--   Run `make check` and `make test` before submitting changes.
--   Follow the test suite and coverage guidelines.
--   See [CONTRIBUTING.md](CONTRIBUTING.md) for branching, testing, code quality checks, and submitting pull requests.
+- Submit issues or pull requests on [GitHub](https://github.com/alandtse/hlslkit).
+- Run `make check` and `make test` before submitting changes.
+- Follow the test suite and coverage guidelines.
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for branching, testing, code quality checks, and submitting pull requests.
 
 ### CI/CD
 
--   **Triggers**: Pull requests, merges to `main`, or new releases.
--   **Publishing**: Configure PyPI/Artifactory per [cookiecutter-poetry](https://fpgmaas.github.io/cookiecutter-poetry/features/publishing/#set-up-for-pypi).
--   **Documentation**: Enable MkDocs per [cookiecutter-poetry](https://fpgmaas.github.io/cookiecutter-poetry/features/mkdocs/#enabling-the-documentation-on-github).
--   **Codecov**: Enable coverage reports per [cookiecutter-poetry](https://fpgmaas.github.io/cookiecutter-poetry/features/codecov/).
+- **Triggers**: Pull requests, merges to `main`, or new releases.
+- **Publishing**: Configure PyPI/Artifactory per [cookiecutter-poetry](https://fpgmaas.github.io/cookiecutter-poetry/features/publishing/#set-up-for-pypi).
+- **Documentation**: Enable MkDocs per [cookiecutter-poetry](https://fpgmaas.github.io/cookiecutter-poetry/features/mkdocs/#enabling-the-documentation-on-github).
+- **Codecov**: Enable coverage reports per [cookiecutter-poetry](https://fpgmaas.github.io/cookiecutter-poetry/features/codecov/).
 
 ## CI/CD Integration
 
@@ -370,9 +369,9 @@ docker run --rm -v $(pwd):/workspace -w /workspace hlslkit:latest hlslkit-compil
 
 ## Limitations
 
--   **generate_shader_defines.py**: Only parses `[E]` or `[W]` tagged errors in logs. Untagged errors (e.g., `RunGrass.hlsl(10): error X1000: syntax error`) are ignored.
--   **compile_shaders.py**: Malformed YAML in `shader_defines.yaml` raises uncaught errors. Validate YAML before running.
--   **buffer_scan.py**: Requires `pcpp` for preprocessing and assumes HLSL files are in the project directory or subdirectories.
+- **generate_shader_defines.py**: Only parses `[E]` or `[W]` tagged errors in logs. Untagged errors (e.g., `RunGrass.hlsl(10): error X1000: syntax error`) are ignored.
+- **compile_shaders.py**: Malformed YAML in `shader_defines.yaml` raises uncaught errors. Validate YAML before running.
+- **buffer_scan.py**: Requires `pcpp` for preprocessing and assumes HLSL files are in the project directory or subdirectories.
 
 ## License
 
