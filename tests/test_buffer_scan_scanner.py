@@ -144,7 +144,7 @@ class TestFileScanner:
 
         mock_is_shader_io.side_effect = mock_is_shader_io_side_effect
 
-        hlsl_structs, cpp_structs = scanner.scan_for_structs()
+        hlsl_structs, _cpp_structs = scanner.scan_for_structs()
 
         # VSInput should be skipped
         assert "VSInput" not in hlsl_structs
@@ -168,7 +168,7 @@ class TestFileScanner:
         # Mock is_shader_io_struct to return False
         mock_is_shader_io.return_value = False
 
-        hlsl_structs, cpp_structs = scanner.scan_for_structs()
+        hlsl_structs, _cpp_structs = scanner.scan_for_structs()
 
         # Invalid data should be skipped
         assert "TestStruct" not in hlsl_structs
@@ -195,7 +195,7 @@ class TestFileScanner:
         # Mock is_shader_io_struct to return False
         mock_is_shader_io.return_value = False
 
-        hlsl_structs, cpp_structs = scanner.scan_for_structs()
+        hlsl_structs, _cpp_structs = scanner.scan_for_structs()
 
         # Both should be included
         assert "TestStruct" in hlsl_structs

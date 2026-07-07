@@ -1573,7 +1573,7 @@ def analyze_and_report_results(
     """
     baseline_warnings = load_baseline_warnings(config_file)
     defines_lookup = build_defines_lookup(config_file)
-    new_warnings, all_warnings, errors, suppressed_warnings_count = process_warnings_and_errors(
+    new_warnings, _all_warnings, errors, suppressed_warnings_count = process_warnings_and_errors(
         results, baseline_warnings, suppress_warnings, defines_lookup
     )
     log_new_issues(new_warnings, errors, results, output_dir, defines_lookup)
@@ -1808,14 +1808,14 @@ def main() -> int:
 
     if stop_event.is_set() and results:
         suppress_warnings = [code.strip() for code in args.suppress_warnings.split(",") if code.strip()]
-        exit_code, total_new_warnings, error_count = analyze_and_report_results(
+        exit_code, _total_new_warnings, _error_count = analyze_and_report_results(
             results, args.config, args.output_dir, suppress_warnings, args.max_warnings
         )
         logging.warning("Compilation was interrupted")
         return exit_code
 
     suppress_warnings = [code.strip() for code in args.suppress_warnings.split(",") if code.strip()]
-    exit_code, total_new_warnings, error_count = analyze_and_report_results(
+    exit_code, _total_new_warnings, _error_count = analyze_and_report_results(
         results, args.config, args.output_dir, suppress_warnings, args.max_warnings
     )
     return exit_code

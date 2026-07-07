@@ -155,7 +155,7 @@ def test_parse_log_with_conflicting_defines(mock_open):
         "[00:45:10.555] [1268] [D] Compiled shader Grass:Vertex:10007",
     ]
     mock_open.return_value = mock_file
-    shader_configs, warnings, errors = parse_log("log.txt")
+    shader_configs, _warnings, _errors = parse_log("log.txt")
     assert shader_configs["RunGrass.hlsl"]["VSHADER"] == [
         {
             "entry": "Grass:Vertex:10007",
@@ -199,7 +199,7 @@ def test_parse_log_with_error(mock_open):
         "[00:45:10.544] [37824] [D] Compilation failed",
     ]
     mock_open.return_value = mock_file
-    shader_configs, warnings, errors = parse_log("log.txt")
+    shader_configs, _warnings, errors = parse_log("log.txt")
     assert shader_configs["RunGrass.hlsl"]["VSHADER"] == [
         {"entry": "Grass:Vertex:4", "defines": ["D3DCOMPILE_DEBUG", "VSHADER"]}
     ]
@@ -243,7 +243,7 @@ def test_parse_log_doctest(mock_open):
     ]
     mock_open.return_value = mock_file
 
-    configs, warnings, errors = parse_log("CommunityShaders.log")
+    configs, _warnings, _errors = parse_log("CommunityShaders.log")
     expected_config = [{"entry": "main:vertex:1234", "defines": ["A=1"]}]
     assert configs["src/test.hlsl"]["VSHADER"] == expected_config
 
