@@ -80,9 +80,9 @@ def test_finditer_with_line_numbers_with_line_map():
     line_map = {0: 1, 2: 3}  # Adjusted to match actual function behavior
     result = list(finditer_with_line_numbers(pattern, text, line_map=line_map))
     assert len(result) == 2
-    line_number, match = result[0]
+    line_number, _match = result[0]
     assert line_number == 1  # Adjusted to match actual function behavior
-    line_number, match = result[1]
+    line_number, _match = result[1]
     assert line_number == 3  # Adjusted to match actual function behavior
 
 

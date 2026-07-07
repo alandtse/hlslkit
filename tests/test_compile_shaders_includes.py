@@ -236,7 +236,7 @@ def test_initialize_compilation_single_file_multiple_variants(mock_isfile, mock_
     cpu_count = 4
     physical_cores = 2
     is_ci = False
-    max_workers, target_jobs, jobs_reason, tasks = initialize_compilation(args, cpu_count, physical_cores, is_ci)
+    _max_workers, _target_jobs, _jobs_reason, tasks = initialize_compilation(args, cpu_count, physical_cores, is_ci)
     # Should find all three variants of file.hlsl
     assert len(tasks) == 3
     # In single-file mode, tasks should use the absolute path of the file
@@ -270,7 +270,7 @@ def test_initialize_compilation_single_file_case_sensitive(mock_isfile, mock_exi
     cpu_count = 4
     physical_cores = 2
     is_ci = False
-    max_workers, target_jobs, jobs_reason, tasks = initialize_compilation(args, cpu_count, physical_cores, is_ci)
+    _max_workers, _target_jobs, _jobs_reason, tasks = initialize_compilation(args, cpu_count, physical_cores, is_ci)
     # Should not find any matches due to case sensitivity
     assert tasks == []
 
@@ -301,7 +301,7 @@ def test_initialize_compilation_single_file_with_extra_includes(mock_isfile, moc
     cpu_count = 4
     physical_cores = 2
     is_ci = False
-    max_workers, target_jobs, jobs_reason, tasks = initialize_compilation(args, cpu_count, physical_cores, is_ci)
+    _max_workers, _target_jobs, _jobs_reason, tasks = initialize_compilation(args, cpu_count, physical_cores, is_ci)
     # Should find the file and create tasks
     assert len(tasks) == 1
     assert os.path.basename(tasks[0][0]) == "file.hlsl"
@@ -329,7 +329,7 @@ def test_submit_tasks_with_extra_includes():
     target_jobs = 1
     futures = {}
     shader_dir = "/shaders"
-    new_active_tasks, new_task_iterator = submit_tasks(
+    _new_active_tasks, _new_task_iterator = submit_tasks(
         mock_executor, task_iterator, active_tasks, target_jobs, args, futures, shader_dir
     )
     mock_executor.submit.assert_called_once()
@@ -360,7 +360,7 @@ def test_submit_tasks_with_empty_extra_includes():
     target_jobs = 1
     futures = {}
     shader_dir = "/shaders"
-    new_active_tasks, new_task_iterator = submit_tasks(
+    _new_active_tasks, _new_task_iterator = submit_tasks(
         mock_executor, task_iterator, active_tasks, target_jobs, args, futures, shader_dir
     )
     mock_executor.submit.assert_called_once()
@@ -391,7 +391,7 @@ def test_submit_tasks_with_whitespace_extra_includes():
     target_jobs = 1
     futures = {}
     shader_dir = "/shaders"
-    new_active_tasks, new_task_iterator = submit_tasks(
+    _new_active_tasks, _new_task_iterator = submit_tasks(
         mock_executor, task_iterator, active_tasks, target_jobs, args, futures, shader_dir
     )
     mock_executor.submit.assert_called_once()

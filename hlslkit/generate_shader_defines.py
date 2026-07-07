@@ -172,7 +172,7 @@ def collect_tasks(lines: list[str]) -> list[CompilationTask]:
     for line in lines:
         compile_match = compile_regex.match(line)
         if compile_match:
-            timestamp, process_id, file_path, entry_point, compile_args = compile_match.groups()
+            _timestamp, process_id, file_path, entry_point, compile_args = compile_match.groups()
             defines = re.findall(r"\S+=[\w\d]+|\S+", compile_args.strip())
             tasks.append(
                 CompilationTask(
@@ -187,7 +187,7 @@ def collect_tasks(lines: list[str]) -> list[CompilationTask]:
 
         compiled_match = compiled_shader_regex.match(line)
         if compiled_match:
-            timestamp, process_id, entry_point = compiled_match.groups()
+            _timestamp, process_id, entry_point = compiled_match.groups()
             for task in reversed(tasks):
                 if task.process_id == process_id and task.entry_point == entry_point and task.end_time is None:
                     task.end_time = parse_timestamp(line)
@@ -196,7 +196,7 @@ def collect_tasks(lines: list[str]) -> list[CompilationTask]:
 
         completed_match = completed_regex.match(line)
         if completed_match:
-            timestamp, process_id, entry_point = completed_match.groups()
+            _timestamp, process_id, entry_point = completed_match.groups()
             for task in reversed(tasks):
                 if task.process_id == process_id and task.entry_point == entry_point and task.end_time is None:
                     task.end_time = parse_timestamp(line)
@@ -282,7 +282,7 @@ def collect_warnings_and_errors(
             line = lines[i].strip()
             shader_log_match = re.match(r"\[(\d{2}:\d{2}:\d{2}\.\d{3})\] \[(\d+)\] \[D\] Shader logs:", line)
             if shader_log_match:
-                timestamp, current_process_id = shader_log_match.groups()
+                _timestamp, current_process_id = shader_log_match.groups()
                 current_time = parse_timestamp(line)
                 current_warnings = []
                 pbar.update(1)

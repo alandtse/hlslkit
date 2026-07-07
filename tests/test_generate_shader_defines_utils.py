@@ -297,7 +297,7 @@ class TestWarningErrorCollection:
         ]
         warnings = {}
         errors = {}
-        result_warnings, result_errors = collect_warnings_and_errors(lines, tasks, warnings, errors, 1)
+        _result_warnings, _result_errors = collect_warnings_and_errors(lines, tasks, warnings, errors, 1)
         # This should update the progress bar but not add errors since it doesn't match the exact pattern
 
 
@@ -318,7 +318,7 @@ class TestCommonDefines:
                 "CSHADER": [],
             },
         }
-        common_defines, define_counts, define_files = compute_common_defines(shader_configs)
+        common_defines, _define_counts, _define_files = compute_common_defines(shader_configs)
         assert "DEBUG=1" in common_defines
         assert "RELEASE=0" not in common_defines  # Not common across all shaders
 
