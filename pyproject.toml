@@ -34,27 +34,12 @@ packages = [
   {include = "hlslkit"}
 ]
 
-[tool.poetry.dependencies]
-python = ">=3.10,<4.0"
-pyyaml = "^6.0.2"
-tqdm = "^4.67.1"
-py-markdown-table = "^1.3.0"
-psutil = "^7.0.0"
-pcpp = "^1.30"
-jellyfish = "^1.2.0"
-pathspec = "^0.12.1"
-xxhash = "^3.0.0"
-gooey = { version = "^1.0.8.1", optional = true }
-
-[tool.poetry.extras]
-gui = ["gooey"]
-
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.2.0"
-pytest-cov = "^4.0.0"
-deptry = "^0.16.2"
+pytest = "^9.0.3"
+pytest-cov = "^7.0.0"
+deptry = "^0.25.1"
 pyright = "^1.1.382"
-pre-commit = "^3.4.0"
+pre-commit = "^4.0.0"
 tox = "^4.11.1"
 pytest-mock = "^3.14.0"
 
@@ -62,6 +47,11 @@ pytest-mock = "^3.14.0"
 mkdocs = "^1.4.2"
 mkdocs-material = "^9.2.7"
 mkdocstrings = {extras = ["python"], version = "^0.26.1"}
+# griffe 2.0 renamed/restructured its package layout (split into griffelib/
+# griffecli); mkdocstrings-python 1.x still imports the pre-2.0 API and
+# breaks at import time on 2.x. Pin below 2.0 until mkdocstrings-python
+# ships a release that supports the new layout.
+griffe = "<2.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
