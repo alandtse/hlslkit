@@ -255,8 +255,12 @@ def compile_shader(
     # Determine if shader_dir is a file or directory
     if os.path.isfile(shader_dir):
         shader_file_path = os.path.abspath(shader_file)
+        # subprocess.Popen's cwd must be a directory; single-file mode passes
+        # the shader file itself as shader_dir, so use its parent instead.
+        compile_cwd = os.path.abspath(os.path.dirname(shader_dir))
     else:
         shader_file_path = os.path.join(shader_dir, shader_basename)
+        compile_cwd = os.path.abspath(shader_dir)
     if not os.path.exists(shader_file_path):
         error_msg = f"Shader file not found in {shader_dir}: {shader_basename}"
         logging.error(error_msg)
@@ -325,7 +329,7 @@ def compile_shader(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            cwd=os.path.abspath(shader_dir),
+            cwd=compile_cwd,
         )
         with running_processes_lock:
             running_processes.add(process)
