@@ -139,6 +139,8 @@ python compile_shaders.py --shader-dir build\ALL-WITH-AUTO-DEPLOYMENT\aio\Shader
 -   `--optimization-level`: Optimization level (0-3, default: 1 or 3 if stripping debug defines).
 -   `--force-partial-precision`: Use 16-bit floats for performance.
 -   `--extra-includes`: Comma-separated list of additional include directories for `fxc.exe` (these will be added as `/I` flags in addition to the shader's parent directory and shader-dir).
+-   `--emit-cache-manifest`: Path to write a content-digest `Manifest.json` for `--output-dir`, matching the runtime's manifest-first disk-cache validity check (see `hlslkit/shader_digest.py`). Windows-only. Omit to skip it.
+-   `--manifest-global-defines`: Global preprocessor state folded into `--emit-cache-manifest`'s digests, matching the target install (e.g. `VR;` for a VR runtime; default `""` matches a default SE install).
 -   `-d/--debug`: Enable debug output.
 -   `-g/--gui`: Run with GUI (requires `gooey`).
 

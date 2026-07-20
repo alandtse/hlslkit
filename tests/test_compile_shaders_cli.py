@@ -1,11 +1,12 @@
 """Tests for CLI argument parsing functionality."""
 
+import argparse
 import sys
 from unittest.mock import patch
 
 import pytest
 
-from hlslkit.compile_shaders import parse_arguments
+from hlslkit.compile_shaders import _maybe_write_cache_manifest, parse_arguments
 
 
 def test_parse_arguments_default_jobs():
@@ -245,3 +246,20 @@ def test_parse_arguments_zero_jobs():
         pytest.raises(SystemExit),
     ):
         parse_arguments(default_jobs=4)
+
+
+def test_maybe_write_cache_manifest_noop_when_flag_empty():
+    """No --emit-cache-manifest means no manifest write is attempted at all."""
+    args = argparse.Namespace(emit_cache_manifest="", shader_dir="Shaders", manifest_global_defines="")
+    _maybe_write_cache_manifest(args)  # must not raise, must not touch the filesystem
+
+
+def test_maybe_write_cache_manifest_never_raises_on_failure(tmp_path):
+    """A manifest failure (missing shader dir, disk error, etc.) must not fail
+    an otherwise-successful compile -- it's caught and logged, not raised."""
+    args = argparse.Namespace(
+        emit_cache_manifest=str(tmp_path / "does-not-exist" / "Manifest.json"),
+        shader_dir=str(tmp_path / "nonexistent-shader-dir"),
+        manifest_global_defines="",
+    )
+    _maybe_write_cache_manifest(args)  # must not raise regardless of platform or failure mode

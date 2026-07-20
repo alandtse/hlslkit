@@ -11,6 +11,7 @@ This document provides guidance for AI agents working with the hlslkit repositor
 1. **`hlslkit/compile_shaders.py`** - Main shader compilation script
 2. **`hlslkit/generate_shader_defines.py`** - Generates shader configuration from logs
 3. **`hlslkit/buffer_scan.py`** - Analyzes buffer register usage and detects conflicts
+4. **`hlslkit/shader_digest.py`** - Content-digest manifest for a compiled shader cache, matching the consuming runtime's own digest algorithm byte-for-byte
 
 ### Entry Points
 
