@@ -12,6 +12,16 @@ Windows-only by design: the include-closure sort order must match the C++
 side's native (backslash) path separators and case-insensitive comparison,
 which only holds running on Windows -- matching this project's windows-2025
 CI runner for the prebuilt-cache release workflow.
+
+ImageSpace shaders (compile_shaders.py's cache dirs are named by source
+stem, but the runtime reads them from per-technique dirs named by
+fxpFilename -- see build-shader-cache.py's remap_imagespace_dirs) need
+build_manifest_entries()'s resolve_source_name callback and can only be
+correctly resolved AFTER that remap has already run. compile_shaders.py's
+--emit-cache-manifest flag writes its manifest before any such
+post-processing step, so a caller with an ImageSpace remap step (like
+build-shader-cache.py) must call write_manifest() directly afterward
+instead of relying on that CLI flag.
 """
 
 from __future__ import annotations
@@ -20,6 +30,7 @@ import json
 import os
 import struct
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import xxhash
@@ -177,7 +188,12 @@ def compute_shader_content_digest(
     return combined
 
 
-def build_manifest_entries(cache_dir: Path, shader_root: Path, global_defines_state: str) -> dict[str, str]:
+def build_manifest_entries(
+    cache_dir: Path,
+    shader_root: Path,
+    global_defines_state: str,
+    resolve_source_name: Callable[[str], str] | None = None,
+) -> dict[str, str]:
     """Compute manifest entries for every compiled blob under cache_dir.
 
     Args:
@@ -188,6 +204,12 @@ def build_manifest_entries(cache_dir: Path, shader_root: Path, global_defines_st
             install, "VR;" for VR. This tool never targets Developer Mode or
             a custom Shader Defines string, since a release-parity prebuilt
             cache assumes neither is active on the machine that built it.
+        resolve_source_name: Maps a cache directory name to the shader source
+            stem (without extension) it should be validated against, for
+            cases where they differ -- e.g. ImageSpace shaders, whose cache
+            directories are named by runtime technique (the fxpFilename the
+            engine selects by), not by the source file they were compiled
+            from. Defaults to identity, correct for every non-ImageSpace shader.
 
     Returns:
         Mapping of blob path (relative to cache_dir, POSIX separators,
@@ -203,7 +225,8 @@ def build_manifest_entries(cache_dir: Path, shader_root: Path, global_defines_st
         if not blob.is_file() or blob.suffix.lower() not in _CACHE_EXTENSIONS:
             continue
         shader_name = blob.parent.name
-        source = shader_root / f"{shader_name}.hlsl"
+        source_name = resolve_source_name(shader_name) if resolve_source_name else shader_name
+        source = shader_root / f"{source_name}.hlsl"
         if not source.is_file():
             continue
         digest = compute_shader_content_digest(source, shader_root, digest_cache)
@@ -215,7 +238,13 @@ def build_manifest_entries(cache_dir: Path, shader_root: Path, global_defines_st
     return entries
 
 
-def write_manifest(cache_dir: Path, shader_root: Path, global_defines_state: str, manifest_path: Path) -> int:
+def write_manifest(
+    cache_dir: Path,
+    shader_root: Path,
+    global_defines_state: str,
+    manifest_path: Path,
+    resolve_source_name: Callable[[str], str] | None = None,
+) -> int:
     """Write Manifest.json in the schema Util::ShaderCacheManifest::Manifest
     expects. Returns the number of entries written."""
     if sys.platform != "win32":
@@ -226,7 +255,7 @@ def write_manifest(cache_dir: Path, shader_root: Path, global_defines_state: str
             "runtime's digest exactly. Running it elsewhere would silently "
             "produce a manifest that never validates."
         )
-    entries = build_manifest_entries(cache_dir, shader_root, global_defines_state)
+    entries = build_manifest_entries(cache_dir, shader_root, global_defines_state, resolve_source_name)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(
         json.dumps({"schemaVersion": SCHEMA_VERSION, "entries": entries}, sort_keys=True),

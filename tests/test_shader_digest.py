@@ -180,6 +180,30 @@ def test_build_manifest_entries_skips_blobs_with_no_matching_source(tmp_path):
     assert not any(k.startswith("Orphaned/") for k in entries)
 
 
+def test_build_manifest_entries_uses_resolve_source_name_when_given(tmp_path):
+    """ImageSpace-style case: the cache directory (named by runtime technique)
+    doesn't match any source file directly, but a caller-supplied resolver
+    (e.g. build-shader-cache.py's IMAGESPACE_DIRS table) maps it to the real
+    source stem it was actually compiled from."""
+    cache_dir = tmp_path / "ShaderCache"
+    shader_dir = tmp_path / "Shaders"
+    _write(shader_dir / "ISCompositeLensFlareVolumetricLighting.hlsl", "// v1\n")
+    _write(cache_dir / "ISCompositeLensFlare" / "73.vso", b"\x00\x01")
+
+    without_resolver = build_manifest_entries(cache_dir, shader_dir, "")
+    assert without_resolver == {}
+
+    with_resolver = build_manifest_entries(
+        cache_dir,
+        shader_dir,
+        "",
+        resolve_source_name=lambda name: {"ISCompositeLensFlare": "ISCompositeLensFlareVolumetricLighting"}.get(
+            name, name
+        ),
+    )
+    assert "ISCompositeLensFlare/73.vso" in with_resolver
+
+
 def test_build_manifest_entries_uses_posix_separators(tmp_path):
     cache_dir = tmp_path / "ShaderCache"
     shader_dir = tmp_path / "Shaders"
