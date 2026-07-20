@@ -9,6 +9,9 @@ to catch.
 """
 
 import json
+import sys
+
+import pytest
 
 from hlslkit.shader_digest import (
     SCHEMA_VERSION,
@@ -226,6 +229,7 @@ def test_build_manifest_entries_folds_global_defines_state(tmp_path):
     assert se_entries["Lighting/1A2B.pso"] != vr_entries["Lighting/1A2B.pso"]
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="write_manifest is Windows-only by design")
 def test_write_manifest_matches_runtime_schema(tmp_path):
     cache_dir = tmp_path / "ShaderCache"
     shader_dir = tmp_path / "Shaders"
