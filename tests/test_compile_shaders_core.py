@@ -1,5 +1,6 @@
 """Tests for core shader compilation functionality."""
 
+import os
 import shutil
 from subprocess import TimeoutExpired
 from unittest.mock import MagicMock, patch
@@ -221,3 +222,37 @@ def test_parse_shader_configs_empty_entries(mock_open, mock_yaml_load):
     result = parse_shader_configs("config.yaml")
     assert len(result) == 1
     assert ("test.hlsl", "PSHADER", "main:pixel:5678", ["D=4"]) in result
+
+
+@patch("hlslkit.compile_shaders.validate_shader_inputs")
+@patch("hlslkit.compile_shaders.subprocess.Popen")
+def test_compile_shader_single_file_mode_uses_parent_dir_as_cwd(mock_popen, mock_validate, tmp_path):
+    """subprocess.Popen's cwd must be a directory. In single-file mode,
+    shader_dir is the shader file itself (see the docs: "If a file is
+    provided, only that shader will be compiled") -- passing it straight
+    through as cwd raised WinError 267 on every task, silently swallowed
+    by the except-and-log-failure below, so the CLI reported a false
+    "0 errors" while producing no output at all."""
+    mock_validate.return_value = None
+    shader_file = tmp_path / "Test.hlsl"
+    shader_file.write_text("float4 main() : SV_Target { return 0; }", encoding="utf-8")
+
+    mock_process = MagicMock()
+    mock_process.communicate.return_value = ("Compiled", "")
+    mock_process.returncode = 0
+    mock_popen.return_value = mock_process
+
+    result = compile_shader(
+        fxc_path="fxc.exe",
+        shader_file=str(shader_file),
+        shader_type="PSHADER",
+        entry="main:pixel:1234",
+        defines=["A=1"],
+        output_dir=str(tmp_path / "out"),
+        shader_dir=str(shader_file),  # single-file mode: shader_dir IS the file
+    )
+
+    assert result["success"] is True
+    actual_cwd = mock_popen.call_args.kwargs["cwd"]
+    assert actual_cwd == str(tmp_path.resolve())
+    assert os.path.isdir(actual_cwd)
