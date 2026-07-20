@@ -13,7 +13,8 @@ dependencies = [
     "psutil>=7.0.0",
     "pcpp>=1.30",
     "jellyfish>=1.2.0",
-    "pathspec>=0.12.1"
+    "pathspec>=0.12.1",
+    "xxhash>=3.0.0"
 ]
 
 [project.urls]
@@ -42,6 +43,7 @@ psutil = "^7.0.0"
 pcpp = "^1.30"
 jellyfish = "^1.2.0"
 pathspec = "^0.12.1"
+xxhash = "^3.0.0"
 gooey = { version = "^1.0.8.1", optional = true }
 
 [tool.poetry.extras]

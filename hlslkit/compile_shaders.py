@@ -29,6 +29,7 @@ import threading
 import time
 from collections import deque
 from datetime import datetime
+from pathlib import Path
 from types import FrameType
 
 import yaml
@@ -1034,6 +1035,26 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
             "tree triggers a safe fallback to full validation."
         ),
     )
+    parser.add_argument(
+        "--emit-cache-manifest",
+        default=defaults.get("emit-cache-manifest", ""),
+        help=(
+            "Path to write a content-digest Manifest.json for --output-dir, "
+            "matching the runtime's manifest-first disk-cache validity check "
+            "(see hlslkit.shader_digest). Windows-only. Empty (default) skips it."
+        ),
+    )
+    parser.add_argument(
+        "--manifest-global-defines",
+        default=defaults.get("manifest-global-defines", ""),
+        help=(
+            "Global preprocessor state to fold into --emit-cache-manifest's "
+            "digests, matching the runtime's GetGlobalDefinesDigest for the "
+            "install this cache targets, e.g. 'VR;' for a VR runtime. Default "
+            "'' matches a default SE install (no Developer Mode, no custom "
+            "Shader Defines)."
+        ),
+    )
     if not is_gui_mode:
         parser.add_argument("-g", "--gui", action="store_true", help="Run with GUI")
     args = parser.parse_args()
@@ -1790,6 +1811,28 @@ def get_instance_count(warning: dict) -> int:
         return len(instances)
 
 
+def _maybe_write_cache_manifest(args: argparse.Namespace) -> None:
+    """Write the content-digest manifest for this run's --output-dir, if
+    --emit-cache-manifest was passed. Never raises: a manifest failure
+    should not fail an otherwise-successful compile, just skip the manifest
+    (the runtime falls back to its mtime check for every blob, same as
+    before this capability existed)."""
+    if not args.emit_cache_manifest:
+        return
+    from hlslkit.shader_digest import write_manifest
+
+    shader_root = Path(args.shader_dir)
+    if shader_root.is_file():
+        shader_root = shader_root.parent
+    try:
+        count = write_manifest(
+            Path(args.output_dir), shader_root, args.manifest_global_defines, Path(args.emit_cache_manifest)
+        )
+        logging.info(f"Wrote {count} entries to cache manifest {args.emit_cache_manifest}")
+    except Exception:
+        logging.exception("Failed to write cache manifest")
+
+
 def main() -> int:
     """Main entry point for the shader compilation script.
 
@@ -1818,6 +1861,7 @@ def main() -> int:
     exit_code, _total_new_warnings, _error_count = analyze_and_report_results(
         results, args.config, args.output_dir, suppress_warnings, args.max_warnings
     )
+    _maybe_write_cache_manifest(args)
     return exit_code
 
 
