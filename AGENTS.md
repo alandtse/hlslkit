@@ -118,6 +118,7 @@ python -m hlslkit.compile_shaders \
 -   `--strip-debug-defines`: Remove debug defines
 -   `--optimization-level`: Optimization level (0-3)
 -   `--extra-includes`: Additional include directories
+-   `--timing-report`: Path to write a JSON per-shader compile-time report (see below)
 
 ### 3. Scan Buffer Usage
 
@@ -253,6 +254,17 @@ The codebase handles both forward and backward slashes for cross-platform compat
 
 -   Windows paths: `build\Shaders\file.hlsl`
 -   Unix paths: `build/Shaders/file.hlsl`
+
+### Compile-Time Profiling
+
+Pass `--timing-report path/to/report.json` to `compile_shaders.py` to record the
+wall-clock duration of every individual `fxc.exe` invocation. Each entry is
+`{"file", "entry", "type", "duration_seconds"}` for one file+entry variant (the
+`entry` name already encodes the permutation/defines id), sorted by
+`duration_seconds` descending so the slowest compiles sort first. Omitting the
+flag (the default) skips the report and adds no measurable overhead: the
+timing is a single `time.perf_counter()` wrap already present around each
+`fxc.exe` call.
 
 ### Parallel Compilation
 

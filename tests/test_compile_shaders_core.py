@@ -1,5 +1,6 @@
 """Tests for core shader compilation functionality."""
 
+import argparse
 import os
 import shutil
 from subprocess import TimeoutExpired
@@ -11,6 +12,7 @@ import yaml
 from hlslkit.compile_shaders import (
     compile_shader,
     parse_shader_configs,
+    run_compilation,
 )
 
 # Check if fxc.exe is available in the environment
@@ -45,6 +47,7 @@ def test_compile_shader_success(mock_exists, mock_makedirs, mock_popen, mock_val
     log_str = str(result["log"])
     assert result["success"] is True
     assert "Compiled" in log_str
+    assert result["duration_seconds"] >= 0
 
 
 @patch("hlslkit.compile_shaders.validate_shader_inputs")
@@ -73,6 +76,7 @@ def test_compile_shader_missing_file(mock_exists, mock_makedirs, mock_popen, moc
     )
     assert result["success"] is False
     assert "Invalid shader file" in str(result["log"])
+    assert result["duration_seconds"] == 0.0
 
 
 @patch("hlslkit.compile_shaders.validate_shader_inputs")
@@ -164,6 +168,87 @@ def test_compile_shader_subprocess_timeout(mock_exists, mock_makedirs, mock_pope
     )
     assert result["success"] is False
     assert "timed out" in str(result["log"]).lower()
+
+
+@patch("hlslkit.compile_shaders.validate_shader_inputs")
+def test_compile_shader_unsupported_type(mock_validate):
+    """Test compile_shader with an unsupported shader type returns duration_seconds."""
+    mock_validate.return_value = None
+    result = compile_shader(
+        fxc_path="fxc.exe",
+        shader_file="test.hlsl",
+        shader_type="GSHADER",
+        entry="main:vertex:1234",
+        defines=["A=1"],
+        output_dir="output",
+        shader_dir="shaders",
+        debug=False,
+        strip_debug_defines=False,
+        optimization_level="1",
+        force_partial_precision=False,
+    )
+    assert result["success"] is False
+    assert "Unsupported shader type" in str(result["log"])
+    assert result["duration_seconds"] == 0.0
+
+
+def test_compile_shader_aborted():
+    """Test compile_shader returns duration_seconds when stop_event is already set."""
+    from hlslkit.compile_shaders import stop_event
+
+    stop_event.set()
+    try:
+        result = compile_shader(
+            fxc_path="fxc.exe",
+            shader_file="test.hlsl",
+            shader_type="VSHADER",
+            entry="main:vertex:1234",
+            defines=["A=1"],
+            output_dir="output",
+            shader_dir="shaders",
+            debug=False,
+            strip_debug_defines=False,
+            optimization_level="1",
+            force_partial_precision=False,
+        )
+    finally:
+        stop_event.clear()
+    assert result["success"] is False
+    assert "aborted" in str(result["log"]).lower()
+    assert result["duration_seconds"] == 0.0
+
+
+@patch("hlslkit.compile_shaders.handle_termination")
+@patch("hlslkit.compile_shaders.process_completed_futures")
+@patch("hlslkit.compile_shaders.submit_tasks")
+@patch("hlslkit.compile_shaders.manage_jobs")
+@patch("hlslkit.compile_shaders.initialize_compilation")
+def test_run_compilation_keyboard_interrupt_preserves_results(
+    mock_init, mock_manage_jobs, mock_submit_tasks, mock_process_completed, mock_handle_termination
+):
+    """A Ctrl+C mid-run must not discard results already gathered from completed futures."""
+    fake_future = MagicMock()
+    fake_future.done.return_value = True
+    completed_result = {"file": "a.hlsl", "entry": "main:1", "type": "PSHADER", "duration_seconds": 1.0}
+
+    mock_init.return_value = (1, 1, "manual", [("a.hlsl", "PSHADER", "main:1", [])])
+
+    def fake_process_completed(completed_futures, futures, results, *_args, **_kwargs):
+        results.append(completed_result)
+        futures.clear()
+        return 0, 1
+
+    mock_process_completed.side_effect = fake_process_completed
+    mock_submit_tasks.side_effect = [(1, iter([])), (1, iter([]))]
+    # First manage_jobs call succeeds (lets the first iteration complete and
+    # populate results); the second raises, simulating Ctrl+C mid-loop.
+    mock_manage_jobs.side_effect = [(1, "manual", 0.0), KeyboardInterrupt()]
+
+    args = argparse.Namespace(extra_includes="", shader_dir="shaders")
+    results = run_compilation(args, cpu_count=1, physical_cores=1, is_ci=False)
+
+    assert results == [completed_result]
+    mock_handle_termination.assert_called_once()
 
 
 @patch("hlslkit.compile_shaders.yaml.safe_load")

@@ -18,6 +18,7 @@ Dependencies:
 
 import argparse
 import concurrent.futures
+import json
 import logging
 import os
 import re
@@ -204,7 +205,8 @@ def compile_shader(
 
     Example:
         >>> compile_shader("fxc.exe", "test.hlsl", "PSHADER", "main:1234", [], "build", "src")
-        {'file': 'test.hlsl', 'entry': 'main:1234', 'type': 'PSHADER', 'log': '...', 'success': True, 'cmd': [...]}
+        {'file': 'test.hlsl', 'entry': 'main:1234', 'type': 'PSHADER', 'log': '...', 'success': True,
+         'cmd': [...], 'duration_seconds': 0.01}
     """
     if stop_event.is_set():
         return {
@@ -214,6 +216,7 @@ def compile_shader(
             "log": "Compilation aborted.",
             "success": False,
             "cmd": [],
+            "duration_seconds": 0.0,
         }
 
     validation_error = validate_shader_inputs(fxc_path, shader_file, output_dir, defines, shader_dir)
@@ -226,6 +229,7 @@ def compile_shader(
             "log": validation_error,
             "success": False,
             "cmd": [],
+            "duration_seconds": 0.0,
         }
 
     entry_name = "main"
@@ -244,6 +248,7 @@ def compile_shader(
             "log": f"Unsupported shader type: {shader_type}",
             "success": False,
             "cmd": [],
+            "duration_seconds": 0.0,
         }
 
     os.makedirs(output_subdir, exist_ok=True)
@@ -271,6 +276,7 @@ def compile_shader(
             "log": error_msg,
             "success": False,
             "cmd": [],
+            "duration_seconds": 0.0,
         }
 
     if debug_defines is None:
@@ -323,6 +329,7 @@ def compile_shader(
 
     logging.debug(f"Executing command: {' '.join(cmd)}")
     # Defines are sanitized in validate_shader_inputs to prevent injection
+    start_time = time.perf_counter()
     try:
         process = subprocess.Popen(  # noqa: S603
             cmd,
@@ -343,6 +350,7 @@ def compile_shader(
         with running_processes_lock:
             if process in running_processes:
                 running_processes.remove(process)
+    duration_seconds = time.perf_counter() - start_time
 
     if debug:
         logging.debug(f"Command {'failed' if not success else 'succeeded'}: {' '.join(cmd)}")
@@ -355,6 +363,7 @@ def compile_shader(
         "log": log,
         "success": success,
         "cmd": cmd,
+        "duration_seconds": duration_seconds,
     }
 
 
@@ -831,6 +840,7 @@ def parse_args_for_defaults() -> dict[str, object]:
             "--config",
             "--suppress-warnings",
             "--optimization-level",
+            "--timing-report",
         ]:
             if i + 1 < len(args) and not args[i + 1].startswith("-"):
                 arg_dict[arg.lstrip("-")] = args[i + 1]
@@ -1057,6 +1067,16 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
             "install this cache targets, e.g. 'VR;' for a VR runtime. Default "
             "'' matches a default SE install (no Developer Mode, no custom "
             "Shader Defines)."
+        ),
+    )
+    parser.add_argument(
+        "--timing-report",
+        default=defaults.get("timing-report", ""),
+        help=(
+            "Path to write a JSON per-shader compile-time report (one entry per "
+            "file+entry variant, sorted by duration descending), for finding "
+            "compile-time hot spots across a full run. Empty (default) skips it "
+            "and adds no overhead beyond a perf_counter() wrap per fxc.exe call."
         ),
     )
     if not is_gui_mode:
@@ -1488,34 +1508,47 @@ def run_compilation(args: argparse.Namespace, cpu_count: int, physical_cores: in
         concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor,
         tqdm(total=len(tasks), desc="Compiling shaders", unit="shader") as pbar,
     ):
-        while futures or task_iterator:
-            if stop_event.is_set():
-                break
+        try:
+            while futures or task_iterator:
+                if stop_event.is_set():
+                    break
 
-            target_jobs, jobs_reason, last_check = manage_jobs(
-                target_jobs,
-                cpu_count,
-                physical_cores,
-                is_ci,
-                cpu_usages,
-                completed_tasks,
-                last_check,
-                check_interval,
-                jobs_reason,
-            )
+                target_jobs, jobs_reason, last_check = manage_jobs(
+                    target_jobs,
+                    cpu_count,
+                    physical_cores,
+                    is_ci,
+                    cpu_usages,
+                    completed_tasks,
+                    last_check,
+                    check_interval,
+                    jobs_reason,
+                )
 
-            active_tasks, task_iterator = submit_tasks(
-                executor, task_iterator, active_tasks, target_jobs, args, futures, args.shader_dir
-            )
+                active_tasks, task_iterator = submit_tasks(
+                    executor, task_iterator, active_tasks, target_jobs, args, futures, args.shader_dir
+                )
 
-            completed_futures = [f for f in futures if f.done()]
-            active_tasks, new_completed = process_completed_futures(
-                completed_futures, futures, results, completion_times, pbar, target_jobs, jobs_reason, window_seconds
-            )
-            completed_tasks += new_completed
+                completed_futures = [f for f in futures if f.done()]
+                active_tasks, new_completed = process_completed_futures(
+                    completed_futures,
+                    futures,
+                    results,
+                    completion_times,
+                    pbar,
+                    target_jobs,
+                    jobs_reason,
+                    window_seconds,
+                )
+                completed_tasks += new_completed
 
-            if futures and active_tasks >= target_jobs:
-                time.sleep(0.1)
+                if futures and active_tasks >= target_jobs:
+                    time.sleep(0.1)
+        except KeyboardInterrupt:
+            # Preserve results already gathered from completed futures so
+            # --timing-report and warning analysis still cover them.
+            logging.warning("Keyboard interrupt received")
+            handle_termination()
 
     return results
 
@@ -1837,6 +1870,38 @@ def _maybe_write_cache_manifest(args: argparse.Namespace) -> None:
         logging.exception("Failed to write cache manifest")
 
 
+def _maybe_write_timing_report(results: list[dict], timing_report_path: str) -> None:
+    """Write a per-shader compile-time report to ``timing_report_path``, if set.
+
+    One entry per file+entry variant (the entry name already encodes the
+    permutation/defines id, see ``parse_shader_configs``), sorted by
+    ``duration_seconds`` descending so the slowest compiles sort first.
+    Never raises: a report failure should not fail an otherwise-successful
+    compile, just skip the report.
+    """
+    if not timing_report_path:
+        return
+    try:
+        report = sorted(
+            (
+                {
+                    "file": os.path.basename(normalize_path(result["file"])),
+                    "entry": result["entry"],
+                    "type": result["type"],
+                    "duration_seconds": result.get("duration_seconds", 0.0),
+                }
+                for result in results
+            ),
+            key=lambda entry: entry["duration_seconds"],
+            reverse=True,
+        )
+        with open(timing_report_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2)
+        logging.info(f"Wrote {len(report)} entries to timing report {timing_report_path}")
+    except Exception:
+        logging.exception("Failed to write timing report")
+
+
 def main() -> int:
     """Main entry point for the shader compilation script.
 
@@ -1846,18 +1911,14 @@ def main() -> int:
     default_jobs = 4
     args = parse_arguments(default_jobs)
     cpu_count, physical_cores, is_ci = setup_environment(args)
-    try:
-        results = run_compilation(args, cpu_count, physical_cores, is_ci)
-    except KeyboardInterrupt:
-        logging.warning("Keyboard interrupt received")
-        handle_termination()
-        results = []
+    results = run_compilation(args, cpu_count, physical_cores, is_ci)
 
     if stop_event.is_set() and results:
         suppress_warnings = [code.strip() for code in args.suppress_warnings.split(",") if code.strip()]
         exit_code, _total_new_warnings, _error_count = analyze_and_report_results(
             results, args.config, args.output_dir, suppress_warnings, args.max_warnings
         )
+        _maybe_write_timing_report(results, args.timing_report)
         logging.warning("Compilation was interrupted")
         return exit_code
 
@@ -1866,6 +1927,7 @@ def main() -> int:
         results, args.config, args.output_dir, suppress_warnings, args.max_warnings
     )
     _maybe_write_cache_manifest(args)
+    _maybe_write_timing_report(results, args.timing_report)
     return exit_code
 
 

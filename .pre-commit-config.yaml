@@ -4,6 +4,10 @@ ci:
     # "Executable `poetry` not found". They are already covered by the `quality`
     # and `tests-and-type-check` GitHub Actions jobs, so skip them on pre-commit.ci.
     skip: [pytest, pyright, mkdocs-build]
+    # Defaults don't follow this repo's Conventional Commits standard; match it
+    # so autofix/autoupdate commits get correct release-impact classification.
+    autofix_commit_msg: "style: auto fixes from pre-commit.com hooks"
+    autoupdate_commit_msg: "chore(deps): pre-commit autoupdate"
 
 repos:
     - repo: https://github.com/pre-commit/pre-commit-hooks
