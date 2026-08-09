@@ -1,12 +1,13 @@
 """Tests for CLI argument parsing functionality."""
 
 import argparse
+import json
 import sys
 from unittest.mock import patch
 
 import pytest
 
-from hlslkit.compile_shaders import _maybe_write_cache_manifest, parse_arguments
+from hlslkit.compile_shaders import _maybe_write_cache_manifest, _maybe_write_timing_report, parse_arguments
 
 
 def test_parse_arguments_default_jobs():
@@ -79,6 +80,73 @@ def test_parse_arguments_all_flags():
         assert args.max_warnings == 10
         assert args.extra_includes == "path1,path2"
         assert args.debug_defines == "DEBUG,TRACE"
+
+
+def test_parse_arguments_timing_report_default_empty():
+    """Default --timing-report is empty, i.e. the feature is opt-in."""
+    with patch("sys.argv", ["compile_shaders.py", "--config", "test.yaml", "--shader-dir", "shaders"]):
+        args = parse_arguments(default_jobs=4)
+        assert args.timing_report == ""
+
+
+def test_parse_arguments_timing_report_set():
+    """--timing-report accepts a path like the other output-path flags."""
+    with patch(
+        "sys.argv",
+        [
+            "compile_shaders.py",
+            "--config",
+            "test.yaml",
+            "--shader-dir",
+            "shaders",
+            "--timing-report",
+            "build/timing.json",
+        ],
+    ):
+        args = parse_arguments(default_jobs=4)
+        assert args.timing_report == "build/timing.json"
+
+
+def test_maybe_write_timing_report_noop_when_flag_empty(tmp_path):
+    """No --timing-report means no report file is written at all."""
+    _maybe_write_timing_report([{"file": "a.hlsl", "entry": "main:1", "type": "PSHADER"}], "")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_maybe_write_timing_report_writes_sorted_json(tmp_path):
+    """The report is one entry per file+entry variant, sorted slowest-first."""
+    report_path = tmp_path / "timing.json"
+    results = [
+        {"file": "Shaders/Fast.hlsl", "entry": "main:1", "type": "PSHADER", "duration_seconds": 0.1},
+        {"file": "Shaders/Slow.hlsl", "entry": "main:2", "type": "VSHADER", "duration_seconds": 5.0},
+        {"file": "Shaders/Mid.hlsl", "entry": "main:3", "type": "CSHADER", "duration_seconds": 1.0},
+    ]
+    _maybe_write_timing_report(results, str(report_path))
+
+    with open(report_path, encoding="utf-8") as f:
+        report = json.load(f)
+
+    assert [entry["file"] for entry in report] == ["Slow.hlsl", "Mid.hlsl", "Fast.hlsl"]
+    assert report[0]["entry"] == "main:2"
+    assert report[0]["type"] == "VSHADER"
+    assert report[0]["duration_seconds"] == 5.0
+
+
+def test_maybe_write_timing_report_missing_duration_defaults_to_zero(tmp_path):
+    """A result missing 'duration_seconds' (e.g. an aborted task) reports 0.0 rather than raising."""
+    report_path = tmp_path / "timing.json"
+    _maybe_write_timing_report([{"file": "a.hlsl", "entry": "main:1", "type": "PSHADER"}], str(report_path))
+
+    with open(report_path, encoding="utf-8") as f:
+        report = json.load(f)
+    assert report[0]["duration_seconds"] == 0.0
+
+
+def test_maybe_write_timing_report_never_raises_on_failure(tmp_path):
+    """A report-write failure must not raise -- it's caught and logged, matching
+    the cache-manifest helper's contract of never failing an otherwise-successful compile."""
+    bad_path = str(tmp_path / "does-not-exist" / "timing.json")
+    _maybe_write_timing_report([{"file": "a.hlsl", "entry": "main:1", "type": "PSHADER"}], bad_path)  # must not raise
 
 
 def test_parse_arguments_missing_config():

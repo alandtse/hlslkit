@@ -45,6 +45,7 @@ def test_compile_shader_success(mock_exists, mock_makedirs, mock_popen, mock_val
     log_str = str(result["log"])
     assert result["success"] is True
     assert "Compiled" in log_str
+    assert result["duration_seconds"] >= 0
 
 
 @patch("hlslkit.compile_shaders.validate_shader_inputs")
