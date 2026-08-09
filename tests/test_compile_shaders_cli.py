@@ -142,6 +142,17 @@ def test_maybe_write_timing_report_missing_duration_defaults_to_zero(tmp_path):
     assert report[0]["duration_seconds"] == 0.0
 
 
+def test_maybe_write_timing_report_basename_handles_backslash_paths(tmp_path):
+    """Windows-style backslash paths must reduce to just the filename, same as forward-slash paths."""
+    report_path = tmp_path / "timing.json"
+    results = [{"file": "Shaders\\Sub\\Win.hlsl", "entry": "main:1", "type": "PSHADER", "duration_seconds": 1.0}]
+    _maybe_write_timing_report(results, str(report_path))
+
+    with open(report_path, encoding="utf-8") as f:
+        report = json.load(f)
+    assert report[0]["file"] == "Win.hlsl"
+
+
 def test_maybe_write_timing_report_never_raises_on_failure(tmp_path):
     """A report-write failure must not raise -- it's caught and logged, matching
     the cache-manifest helper's contract of never failing an otherwise-successful compile."""

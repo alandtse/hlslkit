@@ -216,6 +216,7 @@ def compile_shader(
             "log": "Compilation aborted.",
             "success": False,
             "cmd": [],
+            "duration_seconds": 0.0,
         }
 
     validation_error = validate_shader_inputs(fxc_path, shader_file, output_dir, defines, shader_dir)
@@ -228,6 +229,7 @@ def compile_shader(
             "log": validation_error,
             "success": False,
             "cmd": [],
+            "duration_seconds": 0.0,
         }
 
     entry_name = "main"
@@ -246,6 +248,7 @@ def compile_shader(
             "log": f"Unsupported shader type: {shader_type}",
             "success": False,
             "cmd": [],
+            "duration_seconds": 0.0,
         }
 
     os.makedirs(output_subdir, exist_ok=True)
@@ -273,6 +276,7 @@ def compile_shader(
             "log": error_msg,
             "success": False,
             "cmd": [],
+            "duration_seconds": 0.0,
         }
 
     if debug_defines is None:
@@ -1504,34 +1508,47 @@ def run_compilation(args: argparse.Namespace, cpu_count: int, physical_cores: in
         concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor,
         tqdm(total=len(tasks), desc="Compiling shaders", unit="shader") as pbar,
     ):
-        while futures or task_iterator:
-            if stop_event.is_set():
-                break
+        try:
+            while futures or task_iterator:
+                if stop_event.is_set():
+                    break
 
-            target_jobs, jobs_reason, last_check = manage_jobs(
-                target_jobs,
-                cpu_count,
-                physical_cores,
-                is_ci,
-                cpu_usages,
-                completed_tasks,
-                last_check,
-                check_interval,
-                jobs_reason,
-            )
+                target_jobs, jobs_reason, last_check = manage_jobs(
+                    target_jobs,
+                    cpu_count,
+                    physical_cores,
+                    is_ci,
+                    cpu_usages,
+                    completed_tasks,
+                    last_check,
+                    check_interval,
+                    jobs_reason,
+                )
 
-            active_tasks, task_iterator = submit_tasks(
-                executor, task_iterator, active_tasks, target_jobs, args, futures, args.shader_dir
-            )
+                active_tasks, task_iterator = submit_tasks(
+                    executor, task_iterator, active_tasks, target_jobs, args, futures, args.shader_dir
+                )
 
-            completed_futures = [f for f in futures if f.done()]
-            active_tasks, new_completed = process_completed_futures(
-                completed_futures, futures, results, completion_times, pbar, target_jobs, jobs_reason, window_seconds
-            )
-            completed_tasks += new_completed
+                completed_futures = [f for f in futures if f.done()]
+                active_tasks, new_completed = process_completed_futures(
+                    completed_futures,
+                    futures,
+                    results,
+                    completion_times,
+                    pbar,
+                    target_jobs,
+                    jobs_reason,
+                    window_seconds,
+                )
+                completed_tasks += new_completed
 
-            if futures and active_tasks >= target_jobs:
-                time.sleep(0.1)
+                if futures and active_tasks >= target_jobs:
+                    time.sleep(0.1)
+        except KeyboardInterrupt:
+            # Preserve results already gathered from completed futures so
+            # --timing-report and warning analysis still cover them.
+            logging.warning("Keyboard interrupt received")
+            handle_termination()
 
     return results
 
@@ -1868,7 +1885,7 @@ def _maybe_write_timing_report(results: list[dict], timing_report_path: str) -> 
         report = sorted(
             (
                 {
-                    "file": normalize_path(os.path.basename(result["file"])),
+                    "file": os.path.basename(normalize_path(result["file"])),
                     "entry": result["entry"],
                     "type": result["type"],
                     "duration_seconds": result.get("duration_seconds", 0.0),
@@ -1894,12 +1911,7 @@ def main() -> int:
     default_jobs = 4
     args = parse_arguments(default_jobs)
     cpu_count, physical_cores, is_ci = setup_environment(args)
-    try:
-        results = run_compilation(args, cpu_count, physical_cores, is_ci)
-    except KeyboardInterrupt:
-        logging.warning("Keyboard interrupt received")
-        handle_termination()
-        results = []
+    results = run_compilation(args, cpu_count, physical_cores, is_ci)
 
     if stop_event.is_set() and results:
         suppress_warnings = [code.strip() for code in args.suppress_warnings.split(",") if code.strip()]
