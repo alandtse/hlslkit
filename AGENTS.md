@@ -17,17 +17,17 @@ This document provides guidance for AI agents working with the hlslkit repositor
 
 The project defines three CLI commands in `pyproject.toml`:
 
--   `hlslkit-compile` → `hlslkit.compile_shaders:main`
--   `hlslkit-generate` → `hlslkit.generate_shader_defines:main`
--   `hlslkit-buffer-scan` → `hlslkit.buffer_scan:main`
+- `hlslkit-compile` → `hlslkit.compile_shaders:main`
+- `hlslkit-generate` → `hlslkit.generate_shader_defines:main`
+- `hlslkit-buffer-scan` → `hlslkit.buffer_scan:main`
 
 ## Development Setup
 
 ### Prerequisites
 
--   Python 3.10+
--   Poetry (dependency management)
--   fxc.exe (DirectX shader compiler) - required for shader compilation
+- Python 3.10+
+- Poetry (dependency management)
+- fxc.exe (DirectX shader compiler) - required for shader compilation
 
 ### Quick Start
 
@@ -45,12 +45,12 @@ poetry shell
 
 ### Available Make Commands
 
--   `make install` - Install dependencies, setup venv, configure pre-commit hooks
--   `make check` - Run all quality checks (poetry check, pre-commit, pyright, deptry)
--   `make test` - Run pytest with coverage
--   `make build` - Build wheel file
--   `make docs` - Build and serve documentation with MkDocs
--   `make docs-test` - Test documentation builds
+- `make install` - Install dependencies, setup venv, configure pre-commit hooks
+- `make check` - Run all quality checks (poetry check, pre-commit, pyright, deptry)
+- `make test` - Run pytest with coverage
+- `make build` - Build wheel file
+- `make docs` - Build and serve documentation with MkDocs
+- `make docs-test` - Test documentation builds
 
 ## Project Structure
 
@@ -88,11 +88,11 @@ python -m hlslkit.generate_shader_defines \
 
 **Key Parameters:**
 
--   `--log`: Path to the log file (default: `CommunityShaders.log`)
--   `--output`: Output YAML file (default: `shader_defines.yaml`)
--   `--log-level`: Logging level (default: INFO, choices: DEBUG, INFO, WARNING, ERROR, CRITICAL)
--   `-d/--debug`: Enable debug output
--   `-g/--gui`: Run with GUI (requires gooey)
+- `--log`: Path to the log file (default: `CommunityShaders.log`)
+- `--output`: Output YAML file (default: `shader_defines.yaml`)
+- `--log-level`: Logging level (default: INFO, choices: DEBUG, INFO, WARNING, ERROR, CRITICAL)
+- `-d/--debug`: Enable debug output
+- `-g/--gui`: Run with GUI (requires gooey)
 
 ### 2. Compile Shaders
 
@@ -108,17 +108,17 @@ python -m hlslkit.compile_shaders \
 
 **Key Parameters:**
 
--   `--shader-dir`: Directory or single HLSL file to compile
--   `--output-dir`: Output directory for compiled shaders
--   `--config`: Path to shader_defines.yaml
--   `--jobs`: Number of parallel jobs (default: auto-detected)
--   `--max-warnings`: Warning control (0=no new warnings, positive=max new, negative=must eliminate N warnings)
--   `--suppress-warnings`: Comma-separated warning codes (e.g., X1519,X3206)
--   `--fxc`: Path to fxc.exe (if not in PATH)
--   `--strip-debug-defines`: Remove debug defines
--   `--optimization-level`: Optimization level (0-3)
--   `--extra-includes`: Additional include directories
--   `--timing-report`: Path to write a JSON per-shader compile-time report (see below)
+- `--shader-dir`: Directory or single HLSL file to compile
+- `--output-dir`: Output directory for compiled shaders
+- `--config`: Path to shader_defines.yaml
+- `--jobs`: Number of parallel jobs (default: auto-detected)
+- `--max-warnings`: Warning control (0=no new warnings, positive=max new, negative=must eliminate N warnings)
+- `--suppress-warnings`: Comma-separated warning codes (e.g., X1519,X3206)
+- `--fxc`: Path to fxc.exe (if not in PATH)
+- `--strip-debug-defines`: Remove debug defines
+- `--optimization-level`: Optimization level (0-3)
+- `--extra-includes`: Additional include directories
+- `--timing-report`: Path to write a JSON per-shader compile-time report (see below)
 
 ### 3. Scan Buffer Usage
 
@@ -156,8 +156,8 @@ open htmlcov/index.html
 
 ### Test Coverage Expectations
 
--   Target: ~85% line coverage
--   Tests cover: path normalization, shader compilation, YAML parsing, log parsing, buffer scanning
+- Target: ~85% line coverage
+- Tests cover: path normalization, shader compilation, YAML parsing, log parsing, buffer scanning
 
 ## Code Quality
 
@@ -178,9 +178,9 @@ This runs:
 
 The project uses:
 
--   **Ruff** - Linter and formatter (configured in `pyproject.toml`)
--   **Pyright** - Type checker
--   **Pre-commit** - Git hooks for automation
+- **Ruff** - Linter and formatter (configured in `pyproject.toml`)
+- **Pyright** - Type checker
+- **Pre-commit** - Git hooks for automation
 
 Configuration in `pyproject.toml`:
 
@@ -197,20 +197,20 @@ fix = true
 
 Main configuration file containing:
 
--   Project metadata (name, version, description)
--   Dependencies (required and optional)
--   CLI entry points
--   Tool configurations (ruff, pyright, pytest, coverage)
+- Project metadata (name, version, description)
+- Dependencies (required and optional)
+- CLI entry points
+- Tool configurations (ruff, pyright, pytest, coverage)
 
 ### shader_defines.yaml (Generated)
 
 Configuration file for shader compilation containing:
 
--   Common defines for all shaders
--   Per-shader-type defines (PSHADER, VSHADER, CSHADER)
--   Per-file configurations
--   Warning and error baselines
--   Shader entries with preprocessor defines
+- Common defines for all shaders
+- Per-shader-type defines (PSHADER, VSHADER, CSHADER)
+- Per-file configurations
+- Warning and error baselines
+- Shader entries with preprocessor defines
 
 Example structure:
 
@@ -244,16 +244,16 @@ The `--max-warnings` parameter supports sophisticated warning control:
 
 **How it works:**
 
--   Baseline warnings are stored in `shader_defines.yaml`
--   New warnings are detected by comparing current compilation against baseline
--   Exit code 1 if warning threshold exceeded
+- Baseline warnings are stored in `shader_defines.yaml`
+- New warnings are detected by comparing current compilation against baseline
+- Exit code 1 if warning threshold exceeded
 
 ### Path Normalization
 
 The codebase handles both forward and backward slashes for cross-platform compatibility:
 
--   Windows paths: `build\Shaders\file.hlsl`
--   Unix paths: `build/Shaders/file.hlsl`
+- Windows paths: `build\Shaders\file.hlsl`
+- Unix paths: `build/Shaders/file.hlsl`
 
 ### Compile-Time Profiling
 
@@ -270,9 +270,9 @@ timing is a single `time.perf_counter()` wrap already present around each
 
 `compile_shaders.py` uses CPU/memory-aware job scaling:
 
--   Auto-detects optimal job count
--   Requires `psutil` for dynamic adjustment
--   Can be overridden with `--jobs` parameter
+- Auto-detects optimal job count
+- Requires `psutil` for dynamic adjustment
+- Can be overridden with `--jobs` parameter
 
 ## Limitations and Known Issues
 
@@ -327,10 +327,10 @@ docker run --rm -v $(pwd):/workspace -w /workspace \
 
 ## Resources
 
--   **GitHub Repository**: <https://github.com/alandtse/hlslkit/>
--   **Documentation**: <https://alandtse.github.io/hlslkit/>
--   **Issue Tracker**: <https://github.com/alandtse/hlslkit/issues>
--   **License**: GPL-3.0-or-later
+- **GitHub Repository**: <https://github.com/alandtse/hlslkit/>
+- **Documentation**: <https://alandtse.github.io/hlslkit/>
+- **Issue Tracker**: <https://github.com/alandtse/hlslkit/issues>
+- **License**: GPL-3.0-or-later
 
 ## Tips for AI Agents
 
