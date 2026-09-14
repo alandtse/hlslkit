@@ -10,7 +10,9 @@ import pytest
 import yaml
 
 from hlslkit.compile_shaders import (
+    adjust_target_jobs,
     compile_shader,
+    initialize_compilation,
     parse_shader_configs,
     run_compilation,
 )
@@ -341,3 +343,55 @@ def test_compile_shader_single_file_mode_uses_parent_dir_as_cwd(mock_popen, mock
     actual_cwd = mock_popen.call_args.kwargs["cwd"]
     assert actual_cwd == str(tmp_path.resolve())
     assert os.path.isdir(actual_cwd)
+
+
+@pytest.mark.parametrize(
+    ("cpu_count", "physical_cores", "is_ci"),
+    [
+        (4, None, True),  # the exact regression: a 4-vCPU GitHub-hosted runner
+        (4, 2, True),
+        (2, None, True),
+        (8, 4, True),
+        (4, None, False),
+        (8, 4, False),
+    ],
+)
+def test_initialize_compilation_max_workers_covers_target_jobs(cpu_count, physical_cores, is_ci):
+    """max_workers is the ThreadPoolExecutor's real size; it must never be
+    smaller than target_jobs, or target_jobs (e.g. the CI "aggressive"
+    ceiling) is silently capped and never reaches its intended concurrency.
+
+    Regression test for a live bug: on a 4-vCPU GitHub Actions runner,
+    initialize_compilation returned max_workers=2 while target_jobs=3
+    ("auto-detected for CI environment (aggressive)"), so shader-validation
+    CI only ever ran 2 fxc.exe processes concurrently.
+    """
+    args = argparse.Namespace(jobs=None, fxc=None, shader_dir="does-not-exist", config="does-not-exist.yaml")
+    max_workers, target_jobs, jobs_reason, tasks = initialize_compilation(args, cpu_count, physical_cores, is_ci)
+    assert tasks == []  # shader_dir doesn't exist -- early return, before task parsing
+    assert max_workers >= target_jobs, (
+        f"max_workers={max_workers} < target_jobs={target_jobs} ({jobs_reason}); "
+        "the executor pool is smaller than the concurrency it's meant to reach"
+    )
+
+
+@pytest.mark.parametrize("is_ci", [True, False])
+def test_adjust_target_jobs_first_20_tasks_respects_is_ci(is_ci):
+    """The "first 20 tasks" ramp-up ceiling must use the CI-aware formula in
+    CI, not the local-dev core-reservation formula -- otherwise a CI run's
+    target_jobs gets reset down to the smaller value ~10s into the run.
+    """
+    cpu_count = 4
+    max_jobs, reason = adjust_target_jobs(
+        target_jobs=1,
+        cpu_count=cpu_count,
+        physical_cores=None,
+        is_ci=is_ci,
+        cpu_usages=[],
+        completed_tasks=0,
+    )
+    assert reason == "initial max jobs for first 20 tasks"
+    if is_ci:
+        assert max_jobs == 3  # min(max(4-1,2),4)
+    else:
+        assert max_jobs == 2  # min(4-2, 24)

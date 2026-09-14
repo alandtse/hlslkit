@@ -889,6 +889,11 @@ def count_fxc_processes() -> int:
     return count
 
 
+def _ci_job_ceiling(cpu_count: int) -> int:
+    """CI job ceiling: dedicated runners don't need cores reserved for other work."""
+    return min(max(cpu_count - 1, 2), 4)
+
+
 def get_system_adaptive_jobs(
     cpu_count: int, physical_cores: int | None, is_ci: bool, avg_cpu: float
 ) -> tuple[int, str]:
@@ -905,7 +910,7 @@ def get_system_adaptive_jobs(
     """
     if is_ci:
         # In CI environments, be more aggressive with job allocation since runners are dedicated
-        jobs = min(max(cpu_count - 1, 2), 4)
+        jobs = _ci_job_ceiling(cpu_count)
         reason = "auto-detected for CI environment (aggressive)"
         if HAS_PSUTIL:
             try:
@@ -1167,7 +1172,11 @@ def adjust_target_jobs(
         tuple[int, str]: Adjusted number of jobs and reason.
     """
     if completed_tasks < 20:
-        max_jobs = min(physical_cores or 24, cpu_count - 2) if physical_cores else min(cpu_count - 2, 24)
+        # Must match get_system_adaptive_jobs's CI ceiling, not the local-dev formula.
+        if is_ci:
+            max_jobs = _ci_job_ceiling(cpu_count)
+        else:
+            max_jobs = min(physical_cores or 24, cpu_count - 2) if physical_cores else min(cpu_count - 2, 24)
         return max_jobs, "initial max jobs for first 20 tasks"
 
     try:
@@ -1260,6 +1269,9 @@ def initialize_compilation(
         jobs_reason = "user-specified"
     else:
         target_jobs, jobs_reason = get_system_adaptive_jobs(cpu_count, physical_cores, is_ci, avg_cpu=0.0)
+
+    # max_workers is the ThreadPoolExecutor's real size; must not undercut target_jobs.
+    max_workers = max(max_workers, target_jobs)
 
     if not args.fxc:
         args.fxc = shutil.which("fxc.exe")
