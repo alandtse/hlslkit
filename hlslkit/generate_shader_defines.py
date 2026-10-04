@@ -160,13 +160,13 @@ def collect_tasks(lines: list[str]) -> list[CompilationTask]:
     """
     tasks = []
     compile_regex = re.compile(
-        r"\[(\d{2}:\d{2}:\d{2}\.\d{3})\] \[(\d+)\] \[D\] Compiling (.*?)\s+([^:]+:[^:]+:[0-9a-fA-F]+)\s+to\s+(.*)$"
+        r"\[(\d{2}:\d{2}:\d{2}\.\d{3})\] \[(\d+)\s*\] \[D\] Compiling (.*?)\s+([^:]+:[^:]+:[0-9a-fA-F]+)\s+to\s+(.*)$"
     )
     compiled_shader_regex = re.compile(
-        r"\[(\d{2}:\d{2}:\d{2}\.\d{3})\] \[(\d+)\] \[D\] Compiled shader ([^:]+:[^:]+:[0-9a-fA-F]+)"
+        r"\[(\d{2}:\d{2}:\d{2}\.\d{3})\] \[(\d+)\s*\] \[D\] Compiled shader ([^:]+:[^:]+:[0-9a-fA-F]+)"
     )
     completed_regex = re.compile(
-        r"\[(\d{2}:\d{2}:\d{2}\.\d{3})\] \[(\d+)\] \[D\] Adding Completed shader to map: ([^:]+:[^:]+:[0-9a-fA-F]+)(?::.*)?$"
+        r"\[(\d{2}:\d{2}:\d{2}\.\d{3})\] \[(\d+)\s*\] \[D\] Adding Completed shader to map: ([^:]+:[^:]+:[0-9a-fA-F]+)(?::.*)?$"
     )
 
     for line in lines:
@@ -265,22 +265,22 @@ def collect_warnings_and_errors(
     """
     warning_entry_regex = re.compile(r"^(.*?)\((\d+(?:,\d+(?:-\d+)?|\:\d+)?)\): warning (\w+): (.+)$")
     error_e_regex = re.compile(
-        r"\[\d{2}:\d{2}:\d{2}\.\d{3}\] \[(\d+)\] \[E\] Failed to compile Pixel shader ([^:]+::[0-9a-fA-F]+):\n(.*?)\((\d+(?:,\d+(?:-\d+)?))\): error (\w+): (.+)$",
+        r"\[\d{2}:\d{2}:\d{2}\.\d{3}\] \[(\d+)\s*\] \[E\] Failed to compile Pixel shader ([^:]+::[0-9a-fA-F]+):\n(.*?)\((\d+(?:,\d+(?:-\d+)?))\): error (\w+): (.+)$",
         re.DOTALL,
     )
     error_w_regex = re.compile(
-        r"\[\d{2}:\d{2}:\d{2}\.\d{3}\] \[(\d+)\] \[W\] Shader compilation failed:\n(.*?):(\d+(?::\d+))\: (\w+): (.+)$",
+        r"\[\d{2}:\d{2}:\d{2}\.\d{3}\] \[(\d+)\s*\] \[W\] Shader compilation failed:\n(.*?):(\d+(?::\d+))\: (\w+): (.+)$",
         re.DOTALL,
     )
     completed_regex = re.compile(
-        r"\[(\d{2}:\d{2}:\d{2}\.\d{3})\] \[(\d+)\] \[D\] Adding Completed shader to map: ([^:]+:[^:]+:[0-9a-fA-F]+)(?::.*)?$"
+        r"\[(\d{2}:\d{2}:\d{2}\.\d{3})\] \[(\d+)\s*\] \[D\] Adding Completed shader to map: ([^:]+:[^:]+:[0-9a-fA-F]+)(?::.*)?$"
     )
 
     with tqdm(total=total_logs, desc="Parsing logs (warnings/errors)", unit="block") as pbar:
         i = 0
         while i < len(lines):
             line = lines[i].strip()
-            shader_log_match = re.match(r"\[(\d{2}:\d{2}:\d{2}\.\d{3})\] \[(\d+)\] \[D\] Shader logs:", line)
+            shader_log_match = re.match(r"\[(\d{2}:\d{2}:\d{2}\.\d{3})\] \[(\d+)\s*\] \[D\] Shader logs:", line)
             if shader_log_match:
                 _timestamp, current_process_id = shader_log_match.groups()
                 current_time = parse_timestamp(line)

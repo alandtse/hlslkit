@@ -224,6 +224,19 @@ def test_collect_tasks_doctest():
     assert tasks[0].defines == ["A=1"]
 
 
+def test_collect_tasks_padded_thread_id():
+    """Thread ids below 10000 are space-padded by the plugin logger, e.g. ``[9048 ]``."""
+    lines = [
+        "[12:34:56.789] [9048 ] [D] Compiling src/test.hlsl main:Pixel:0 to PSHADER A=1",
+        "[12:34:56.790] [9048 ] [D] Compiled shader main:Pixel:0",
+        "[12:34:56.791] [12345] [D] Compiling src/test.hlsl main:Pixel:1 to PSHADER",
+    ]
+    tasks = collect_tasks(lines)
+    assert [t.entry_point for t in tasks] == ["main:Pixel:0", "main:Pixel:1"]
+    assert tasks[0].process_id == "9048"
+    assert tasks[0].end_time is not None
+
+
 def test_populate_configs_doctest():
     """Test populate_configs function from doctest example."""
     task = CompilationTask("123", "main:vertex:1234", "src/test.hlsl", ["A=1"], datetime.now())
