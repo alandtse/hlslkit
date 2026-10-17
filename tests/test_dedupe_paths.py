@@ -171,6 +171,7 @@ def test_compile_shader_passes_partial_precision(tmp_path, monkeypatch):
         process.returncode = 0
         return process
 
+    monkeypatch.setattr(compile_shaders, "validate_shader_inputs", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(compile_shaders.subprocess, "Popen", fake_popen)
     result = compile_shaders.compile_shader(
         "fxc.exe",
