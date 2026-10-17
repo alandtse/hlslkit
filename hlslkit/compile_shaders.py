@@ -168,6 +168,128 @@ def validate_shader_inputs(
     return None
 
 
+_SHADER_EXTENSIONS = {"VSHADER": ".vso", "PSHADER": ".pso", "CSHADER": ".cso"}
+_SHADER_MODELS = {"VSHADER": "vs_5_0", "PSHADER": "ps_5_0", "CSHADER": "cs_5_0"}
+_DEFAULT_DEBUG_DEFINES = {"DEBUG", "_DEBUG", "D3D_DEBUG_INFO", "D3DCOMPILE_DEBUG", "D3DCOMPILE_SKIP_OPTIMIZATION"}
+
+
+def shader_model(shader_type: str) -> str:
+    """Return the fxc shader model for a shader type, e.g. VSHADER -> vs_5_0.
+
+    Unknown types fall back to their upper-cased name so they still produce a
+    deterministic value; compile_shader rejects them from the extension map.
+    """
+    return _SHADER_MODELS.get(shader_type.upper(), shader_type.upper())
+
+
+def shader_output_path(output_dir: str, shader_file: str, shader_type: str, entry: str) -> str | None:
+    """Return the compiled blob path for a variant, or None for an unsupported type.
+
+    Shared with dedupe so a copied member blob lands exactly where a normal
+    compile of that variant would have written it.
+    """
+    ext = _SHADER_EXTENSIONS.get(shader_type.upper())
+    if ext is None:
+        return None
+    shader_name_no_ext, _ = os.path.splitext(os.path.basename(shader_file))
+    return os.path.join(output_dir, shader_name_no_ext, entry.split(":")[-1] + ext)
+
+
+def _resolve_shader_inputs(shader_file: str, shader_dir: str) -> tuple[str, str, str]:
+    """Resolve the fxc input path, working directory and input basename.
+
+    Single-file mode passes the shader file itself as shader_dir, so its parent
+    becomes the working directory (Popen's cwd must be a directory).
+    """
+    shader_basename = os.path.basename(shader_file)
+    if os.path.isfile(shader_dir):
+        return os.path.abspath(shader_file), os.path.abspath(os.path.dirname(shader_dir)), shader_basename
+    return os.path.join(shader_dir, shader_basename), os.path.abspath(shader_dir), shader_basename
+
+
+def _build_include_dirs(shader_dir: str, shader_file: str, extra_includes: list[str] | None) -> list[str]:
+    """Build the /I directories in the order compile and preprocess both use."""
+    include_dirs = []
+    if os.path.isdir(shader_dir):
+        include_dirs.append(os.path.abspath(shader_dir))
+    shader_parent = os.path.abspath(os.path.dirname(shader_file))
+    if shader_parent not in include_dirs:
+        include_dirs.append(shader_parent)
+    if extra_includes:
+        for inc in extra_includes:
+            inc_path = os.path.abspath(inc)
+            if inc_path not in include_dirs:
+                include_dirs.append(inc_path)
+    return include_dirs
+
+
+def _strip_defines_for_compile(
+    defines: list[str],
+    strip_debug_defines: bool,
+    debug_defines: set[str] | None,
+    shader_file: str,
+    entry: str,
+) -> list[str]:
+    """Apply --strip-debug-defines exactly as both compile and preprocess must."""
+    if debug_defines is None:
+        debug_defines = _DEFAULT_DEBUG_DEFINES
+    if not strip_debug_defines:
+        return defines
+    # Work on a copy to avoid mutating the shared task definition
+    filtered_defines = [d for d in defines if d.split("=", 1)[0].upper() not in debug_defines]
+    if "D3DCOMPILE_AVOID_FLOW_CONTROL" not in filtered_defines:
+        filtered_defines.append("D3DCOMPILE_AVOID_FLOW_CONTROL")
+    logging.debug(
+        f"Stripped debug defines and added D3DCOMPILE_AVOID_FLOW_CONTROL for {shader_file}:{entry}. Defines: {filtered_defines}"
+    )
+    return filtered_defines
+
+
+def _build_fxc_command(fxc_path: str, base_args: list[str], defines: list[str], include_dirs: list[str]) -> list[str]:
+    """Build an fxc argv with the shared /D and /I argument layout."""
+    cmd = [fxc_path, *base_args]
+    for d in defines:
+        cmd.extend(["/D", d])
+    for inc in include_dirs:
+        cmd.extend(["/I", inc])
+    return cmd
+
+
+def build_preprocess_invocation(
+    fxc_path: str,
+    shader_file: str,
+    entry: str,
+    defines: list[str],
+    shader_dir: str,
+    output_path: str,
+    strip_debug_defines: bool = False,
+    debug_defines: set[str] | None = None,
+    extra_includes: list[str] | None = None,
+) -> tuple[list[str], str, str]:
+    """Build an fxc /P invocation sharing compile_shader's define/include handling.
+
+    Args:
+        fxc_path: Path to fxc.exe.
+        shader_file: Shader file as given in the task.
+        entry: Entry id, used only in the strip-defines debug log.
+        defines: Preprocessor defines before debug stripping.
+        shader_dir: Directory containing shader files, or the shader file itself.
+        output_path: Destination for fxc's /P preprocessed output.
+        strip_debug_defines: Apply the same debug-define stripping as compile_shader.
+        debug_defines: Defines treated as debug defines.
+        extra_includes: Additional include directories.
+
+    Returns:
+        tuple[list[str], str, str]: Command, working directory, and resolved
+        shader input path.
+    """
+    filtered = _strip_defines_for_compile(defines, strip_debug_defines, debug_defines, shader_file, entry)
+    shader_path, compile_cwd, shader_basename = _resolve_shader_inputs(shader_file, shader_dir)
+    include_dirs = _build_include_dirs(shader_dir, shader_file, extra_includes)
+    cmd = _build_fxc_command(fxc_path, ["/P", output_path, shader_basename], filtered, include_dirs)
+    return cmd, compile_cwd, shader_path
+
+
 def compile_shader(
     fxc_path: str,
     shader_file: str,
@@ -233,14 +355,8 @@ def compile_shader(
         }
 
     entry_name = "main"
-    shader_id = entry.split(":")[-1]
-    shader_basename = os.path.basename(shader_file)
-    shader_name_no_ext, _ = os.path.splitext(shader_basename)
-    output_subdir = os.path.join(output_dir, shader_name_no_ext)
-
-    ext_map = {"VSHADER": ".vso", "PSHADER": ".pso", "CSHADER": ".cso"}
-    ext = ext_map.get(shader_type.upper())
-    if ext is None:
+    output_path = shader_output_path(output_dir, shader_file, shader_type, entry)
+    if output_path is None:
         return {
             "file": shader_file,
             "entry": entry,
@@ -250,22 +366,11 @@ def compile_shader(
             "cmd": [],
             "duration_seconds": 0.0,
         }
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    os.makedirs(output_subdir, exist_ok=True)
-    output_path = os.path.join(output_subdir, shader_id + ext)
+    model = shader_model(shader_type)
 
-    shader_model_map = {"VSHADER": "vs_5_0", "PSHADER": "ps_5_0", "CSHADER": "cs_5_0"}
-    model = shader_model_map[shader_type.upper()]
-
-    # Determine if shader_dir is a file or directory
-    if os.path.isfile(shader_dir):
-        shader_file_path = os.path.abspath(shader_file)
-        # subprocess.Popen's cwd must be a directory; single-file mode passes
-        # the shader file itself as shader_dir, so use its parent instead.
-        compile_cwd = os.path.abspath(os.path.dirname(shader_dir))
-    else:
-        shader_file_path = os.path.join(shader_dir, shader_basename)
-        compile_cwd = os.path.abspath(shader_dir)
+    shader_file_path, compile_cwd, shader_basename = _resolve_shader_inputs(shader_file, shader_dir)
     if not os.path.exists(shader_file_path):
         error_msg = f"Shader file not found in {shader_dir}: {shader_basename}"
         logging.error(error_msg)
@@ -279,49 +384,12 @@ def compile_shader(
             "duration_seconds": 0.0,
         }
 
-    if debug_defines is None:
-        debug_defines = {"DEBUG", "_DEBUG", "D3D_DEBUG_INFO", "D3DCOMPILE_DEBUG", "D3DCOMPILE_SKIP_OPTIMIZATION"}
-    if strip_debug_defines:
-        # Work on a copy to avoid mutating the shared task definition
-        filtered_defines = [d for d in defines if d.split("=", 1)[0].upper() not in debug_defines]
-        if "D3DCOMPILE_AVOID_FLOW_CONTROL" not in filtered_defines:
-            filtered_defines.append("D3DCOMPILE_AVOID_FLOW_CONTROL")
-        defines = filtered_defines
-        logging.debug(
-            f"Stripped debug defines and added D3DCOMPILE_AVOID_FLOW_CONTROL for {shader_file}:{entry}. Defines: {defines}"
-        )
-
-    cmd = [
-        fxc_path,
-        "/T",
-        model,
-        "/E",
-        entry_name,
-        "/Fo",
-        output_path,
-        "/O" + optimization_level,
-        shader_basename,
-    ]
+    defines = _strip_defines_for_compile(defines, strip_debug_defines, debug_defines, shader_file, entry)
+    include_dirs = _build_include_dirs(shader_dir, shader_file, extra_includes)
+    base_args = ["/T", model, "/E", entry_name, "/Fo", output_path, "/O" + optimization_level, shader_basename]
     if force_partial_precision:
-        cmd.append("/Gfp")
-    for d in defines:
-        cmd.extend(["/D", d])
-    # Always include shader_dir (if directory), or the file's parent (if file)
-    include_dirs = []
-    if os.path.isdir(shader_dir):
-        include_dirs.append(os.path.abspath(shader_dir))
-    # Always include the parent directory of the shader file
-    shader_parent = os.path.abspath(os.path.dirname(shader_file))
-    if shader_parent not in include_dirs:
-        include_dirs.append(shader_parent)
-    # Add extra includes if provided
-    if extra_includes:
-        for inc in extra_includes:
-            inc_path = os.path.abspath(inc)
-            if inc_path not in include_dirs:
-                include_dirs.append(inc_path)
-    for inc in include_dirs:
-        cmd.extend(["/I", inc])
+        base_args.append("/Gfp")
+    cmd = _build_fxc_command(fxc_path, base_args, defines, include_dirs)
 
     log = ""
     success = False
@@ -640,6 +708,42 @@ def process_single_error(line: str, result: dict, errors: dict) -> dict:
     return handler.process(line, errors)
 
 
+def _add_deduped_failure_errors(results: list[dict], errors: dict) -> None:
+    """Name every variant of a failed deduplicated group in the error report.
+
+    Members reuse the representative's compiler output, so a failure whose log
+    has no parseable fxc error line would otherwise be invisible for the whole
+    group. Only results carrying ``deduped_from`` are touched, leaving
+    non-dedupe reports byte-for-byte unchanged.
+    """
+    failed_members = [r for r in results if r.get("deduped_from") and not r.get("success")]
+    if not failed_members:
+        return
+    by_representative: dict[str, list[dict]] = {}
+    for result in failed_members:
+        by_representative.setdefault(result["deduped_from"], []).append(result)
+
+    for representative_key, members in by_representative.items():
+        representative = next(
+            (r for r in results if not r.get("deduped_from") and f"{r['file']}:{r['entry']}" == representative_key),
+            None,
+        )
+        variants = [representative, *members] if representative is not None else members
+        for result in variants:
+            shader_key = f"{os.path.basename(result['file'])}:{result['entry']}".lower()
+            if shader_key in errors:
+                continue
+            handler = ErrorHandler(result)
+            location = f"{normalize_path(result['file'])}:0"
+            errors[shader_key] = {
+                "instances": {
+                    location: [handler.create_issue_data("DEDUPE", "deduplicated compilation failed", location)]
+                },
+                "entries": [result["entry"]],
+                "type": result["type"],
+            }
+
+
 def process_warnings_and_errors(
     results: list[dict],
     baseline_warnings: dict,
@@ -678,6 +782,8 @@ def process_warnings_and_errors(
                 suppressed_warnings_count,
             )
             errors = process_single_error(line, result, errors)
+
+    _add_deduped_failure_errors(results, errors)
 
     return (
         list(new_warnings_dict.values()),
@@ -841,6 +947,7 @@ def parse_args_for_defaults() -> dict[str, object]:
             "--suppress-warnings",
             "--optimization-level",
             "--timing-report",
+            "--dedupe-verify",
         ]:
             if i + 1 < len(args) and not args[i + 1].startswith("-"):
                 arg_dict[arg.lstrip("-")] = args[i + 1]
@@ -863,6 +970,7 @@ def parse_args_for_defaults() -> dict[str, object]:
             "--gui",
             "--strip-debug-defines",
             "--force-partial-precision",
+            "--dedupe",
         ]:
             arg_dict[arg.lstrip("-")] = True
             i += 1
@@ -1084,6 +1192,26 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
             "and adds no overhead beyond a perf_counter() wrap per fxc.exe call."
         ),
     )
+    parser.add_argument(
+        "--dedupe",
+        action="store_true",
+        default=defaults.get("dedupe", False),
+        help=(
+            "Compile one representative per group of variants whose preprocessed "
+            "text is identical (after stripping #line directives), then reuse its "
+            "blob and diagnostics for the other members. Off by default."
+        ),
+    )
+    parser.add_argument(
+        "--dedupe-verify",
+        type=float,
+        default=defaults.get("dedupe-verify", 2.0),
+        help=(
+            "With --dedupe, fully recompile this percentage of deduplicated "
+            "variants and compare their blob bytes and compiler log against the "
+            "representative's. 0 disables the check (default: 2.0)."
+        ),
+    )
     if not is_gui_mode:
         parser.add_argument("-g", "--gui", action="store_true", help="Run with GUI")
     args = parser.parse_args()
@@ -1091,6 +1219,10 @@ def parse_arguments(default_jobs: int) -> argparse.Namespace:
     # Validate jobs argument
     if args.jobs <= 0:
         parser.error("--jobs must be a positive integer")
+
+    if not 0 <= args.dedupe_verify <= 100:
+        parser.error("--dedupe-verify must be between 0 and 100")
+    args.dedupe_verify_failed = False
 
     # Pre-compute debug defines set to avoid repeated parsing
     if args.debug_defines and args.debug_defines.strip():
@@ -1373,6 +1505,26 @@ def manage_jobs(
     return target_jobs, jobs_reason, last_check
 
 
+def _compile_task_args(task: tuple, args: argparse.Namespace, shader_dir: str, output_dir: str) -> tuple:
+    """Build compile_shader's positional arguments for one compile task."""
+    extra_includes = [s for s in (args.extra_includes.split(",") if args.extra_includes else []) if s.strip()]
+    return (
+        args.fxc,
+        task[0],
+        task[1],
+        task[2],
+        task[3],
+        output_dir,
+        shader_dir,
+        args.debug,
+        args.strip_debug_defines,
+        args.optimization_level,
+        args.force_partial_precision,
+        args.debug_defines_set,
+        extra_includes,
+    )
+
+
 def submit_tasks(
     executor: concurrent.futures.ThreadPoolExecutor,
     task_iterator: object,  # Iterator cannot be typed precisely without collections.abc
@@ -1399,23 +1551,8 @@ def submit_tasks(
     while active_tasks < target_jobs and task_iterator:
         try:
             task = next(task_iterator)
-            # Parse extra includes from args
-            extra_includes = [s for s in (args.extra_includes.split(",") if args.extra_includes else []) if s.strip()]
             future = executor.submit(
-                compile_shader,
-                args.fxc,
-                task[0],
-                task[1],
-                task[2],
-                task[3],
-                os.path.abspath(args.output_dir),
-                shader_dir,
-                args.debug,
-                args.strip_debug_defines,
-                args.optimization_level,
-                args.force_partial_precision,
-                args.debug_defines_set,
-                extra_includes,  # Pass extra includes
+                compile_shader, *_compile_task_args(task, args, shader_dir, os.path.abspath(args.output_dir))
             )
             futures[future] = task
             active_tasks += 1
@@ -1485,6 +1622,45 @@ def process_completed_futures(
     return active_tasks, completed_tasks
 
 
+def _prepare_dedupe_groups(args: argparse.Namespace, tasks: list[tuple], max_workers: int) -> list[list[int]]:
+    """Preprocess every task and group variants whose preprocessed text matches.
+
+    Args:
+        args: Command-line arguments carrying the compile settings.
+        tasks: (file, type, entry, defines) tasks from initialize_compilation.
+        max_workers: Worker-pool size to reuse for preprocessing.
+
+    Returns:
+        list[list[int]]: Task indices grouped by key; each group's first index
+        is its representative and the only one compiled.
+    """
+    from hlslkit import dedupe
+
+    extra_includes = [s for s in (args.extra_includes.split(",") if args.extra_includes else []) if s.strip()]
+
+    def preprocess(task: tuple) -> str | None:
+        return dedupe.preprocess_variant(
+            args.fxc,
+            task[0],
+            task[2],
+            task[3],
+            args.shader_dir,
+            strip_debug_defines=args.strip_debug_defines,
+            debug_defines=args.debug_defines_set,
+            extra_includes=extra_includes,
+        )
+
+    groups, failures = dedupe.group_variants(
+        tasks,
+        preprocess,
+        optimization_level=args.optimization_level,
+        force_partial_precision=args.force_partial_precision,
+        max_workers=max_workers,
+    )
+    logging.info(f"Dedupe: {len(tasks)} variants, {len(groups)} unique compiles, {failures} preprocessing failures")
+    return groups
+
+
 def run_compilation(args: argparse.Namespace, cpu_count: int, physical_cores: int | None, is_ci: bool) -> list[dict]:
     """Run parallel shader compilation.
 
@@ -1501,8 +1677,14 @@ def run_compilation(args: argparse.Namespace, cpu_count: int, physical_cores: in
     if not tasks:
         return []
 
+    dedupe_groups: list[list[int]] | None = None
+    compile_tasks = tasks
+    if getattr(args, "dedupe", False):
+        dedupe_groups = _prepare_dedupe_groups(args, tasks, max_workers)
+        compile_tasks = [tasks[group[0]] for group in dedupe_groups]
+
     logging.info(
-        f"Starting compilation of {len(tasks)} shader variants with {max_workers} max workers, {target_jobs} active jobs ({jobs_reason})"
+        f"Starting compilation of {len(compile_tasks)} shader variants with {max_workers} max workers, {target_jobs} active jobs ({jobs_reason})"
     )
 
     results = []
@@ -1510,7 +1692,7 @@ def run_compilation(args: argparse.Namespace, cpu_count: int, physical_cores: in
     window_seconds = 10
     active_tasks = 0
     futures = {}
-    task_iterator = iter(tasks)
+    task_iterator = iter(compile_tasks)
     last_check = time.time()
     check_interval = 10
     cpu_usages = deque(maxlen=10)
@@ -1518,7 +1700,7 @@ def run_compilation(args: argparse.Namespace, cpu_count: int, physical_cores: in
 
     with (
         concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor,
-        tqdm(total=len(tasks), desc="Compiling shaders", unit="shader") as pbar,
+        tqdm(total=len(compile_tasks), desc="Compiling shaders", unit="shader") as pbar,
     ):
         try:
             while futures or task_iterator:
@@ -1561,6 +1743,18 @@ def run_compilation(args: argparse.Namespace, cpu_count: int, physical_cores: in
             # --timing-report and warning analysis still cover them.
             logging.warning("Keyboard interrupt received")
             handle_termination()
+
+    if dedupe_groups is not None:
+        from hlslkit import dedupe
+
+        results = dedupe.expand_results(tasks, dedupe_groups, results, os.path.abspath(args.output_dir))
+        mismatches = dedupe.verify_deduped_members(
+            tasks, dedupe_groups, results, args, getattr(args, "dedupe_verify", 2.0)
+        )
+        for mismatch in mismatches:
+            logging.error(mismatch)
+        if mismatches:
+            args.dedupe_verify_failed = True
 
     return results
 
@@ -1932,6 +2126,8 @@ def main() -> int:
         )
         _maybe_write_timing_report(results, args.timing_report)
         logging.warning("Compilation was interrupted")
+        if getattr(args, "dedupe_verify_failed", False):
+            exit_code = 1
         return exit_code
 
     suppress_warnings = [code.strip() for code in args.suppress_warnings.split(",") if code.strip()]
@@ -1940,6 +2136,8 @@ def main() -> int:
     )
     _maybe_write_cache_manifest(args)
     _maybe_write_timing_report(results, args.timing_report)
+    if getattr(args, "dedupe_verify_failed", False):
+        exit_code = 1
     return exit_code
 
 
