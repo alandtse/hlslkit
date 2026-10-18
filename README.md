@@ -139,6 +139,8 @@ python compile_shaders.py --shader-dir build\ALL-WITH-AUTO-DEPLOYMENT\aio\Shader
 - `--optimization-level`: Optimization level (0-3, default: 1 or 3 if stripping debug defines).
 - `--force-partial-precision`: Use 16-bit floats for performance.
 - `--extra-includes`: Comma-separated list of additional include directories for `fxc.exe` (these will be added as `/I` flags in addition to the shader's parent directory and shader-dir).
+- `--dedupe`: Compile one representative per group of variants whose preprocessed text is identical, then reuse its blob and diagnostics for the other members. Off by default.
+- `--dedupe-verify`: With `--dedupe`, fully recompile this percentage of deduplicated variants and compare their blob bytes and compiler log against the representative's (default: `2.0`, `0` disables the check).
 - `--emit-cache-manifest`: Path to write a content-digest `Manifest.json` for `--output-dir`, matching the runtime's manifest-first disk-cache validity check (see `hlslkit/shader_digest.py`). Windows-only. Omit to skip it.
 - `--manifest-global-defines`: Global preprocessor state folded into `--emit-cache-manifest`'s digests, matching the target install (e.g. `VR;` for a VR runtime; default `""` matches a default SE install).
 - `-d/--debug`: Enable debug output.
@@ -160,6 +162,20 @@ You can specify extra include directories for `fxc.exe` using `--extra-includes`
 
 ```bash
 python compile_shaders.py --shader-dir src --output-dir build --config shader_defines.yaml --extra-includes path/to/includes1,path/to/includes2
+```
+
+##### Content Deduplication
+
+Many variants preprocess to identical text. `--dedupe` preprocesses each variant with `fxc /P` and compiles one representative per group whose preprocessed text matches after stripping `#line` directives (the shader model, optimization level, and `--force-partial-precision` setting must also match). The representative's compiled blob and diagnostics are reused for every other member, so warnings and errors still fan out to each variant and the timing report keeps one entry per variant. Variants whose preprocessing fails are compiled normally rather than skipped.
+
+```bash
+python compile_shaders.py --shader-dir src --output-dir build --config shader_defines.yaml --dedupe
+```
+
+`--dedupe-verify` (default `2.0`) recompiles that percentage of deduplicated variants into a temporary directory and compares both the produced blob bytes and the compiler log against the representative's (diagnostic line and column numbers and output paths are ignored, since members can differ in `#line` values). Any mismatch is logged and fails the run; pass `--dedupe-verify 0` to disable the check:
+
+```bash
+python compile_shaders.py --shader-dir src --output-dir build --config shader_defines.yaml --dedupe --dedupe-verify 5
 ```
 
 ##### Advanced Warning Control
